@@ -3,6 +3,7 @@ from functools import lru_cache
 from pydantic import BaseModel
 
 from .app import ApplicationConfiguration
+from .cache import CacheConfiguration
 from .database import PostgresConfiguration
 
 
@@ -10,6 +11,7 @@ class Configs(BaseModel):
     """Конфигурация приложения."""
 
     app: ApplicationConfiguration = ApplicationConfiguration()
+    cache: CacheConfiguration = CacheConfiguration()
     database: PostgresConfiguration = PostgresConfiguration()
 
 
