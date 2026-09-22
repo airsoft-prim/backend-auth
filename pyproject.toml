@@ -15,6 +15,7 @@ classifiers = [
 ]
 requires-python = ">=3.14"
 dependencies = [
+    "aiofiles>=25.1.0",
     "alembic>=1.20.0",
     "cryptography>=50.0.1",
     "fastapi>=0.141.1",
