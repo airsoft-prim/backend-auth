@@ -5,6 +5,7 @@ from typing import Final
 from fastapi import FastAPI
 from loguru import logger
 
+from src.api import main_router
 from src.core.configs import config
 
 APP_DESCRIPTION: Final[str] = """
@@ -30,3 +31,5 @@ application = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+application.include_router(main_router)
