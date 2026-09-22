@@ -1,0 +1,8 @@
+[environment]
+python-version = "3.14"
+
+[src]
+exclude = [
+    "migrations",
+    ".venv",
+]

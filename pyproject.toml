@@ -1,0 +1,43 @@
+[project]
+name = "backend-auth"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Ruslan Bashinskiy", email = "main+development@oidaho.ru"}
+]
+maintainers = []
+classifiers = [
+    "License :: GPLv3",
+    "Operating System :: OS Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+]
+requires-python = ">=3.14"
+dependencies = [
+    "alembic>=1.20.0",
+    "fastapi>=0.141.1",
+    "loguru>=0.7.3",
+    "pydantic>=2.13.5",
+    "pydantic-settings>=2.15.0",
+    "pyjwt>=2.14.0",
+    "sqlalchemy>=2.0.54",
+    "uvicorn>=0.53.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16.8",
+    "ty>=0.0.83",
+]
+test = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-coverage>=0.0",
+    "pytest-xdist>=3.8.0",
+]
+
+
+[tool.uv]
+package = false
+default-groups = "all"

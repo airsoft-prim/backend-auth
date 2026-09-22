@@ -1,0 +1,21 @@
+# VCS
+.git
+.gitignore
+
+# Виртуальное окружение и кеши Python
+.venv
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Локальные настройки и секреты
+.env
+.env.*
+*.local
+
+# Артефакты сборки
+dist/
+build/
+*.egg-info/
