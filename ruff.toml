@@ -78,6 +78,10 @@ max-complexity = 10
 combine-as-imports = true
 force-sort-within-sections = true
 
+# assert - основной способ проверок в тестах pytest.
+[lint.per-file-ignores]
+"tests/**" = ["S101"]
+
 [format]
 quote-style = "double"
 indent-style = "space"
