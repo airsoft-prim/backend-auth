@@ -37,7 +37,7 @@ async def readiness_healthcheck() -> PlainTextResponse:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
 
-    except SQLAlchemyError:
+    except SQLAlchemyError, Exception:  # noqa: BLE001
         logger.critical("Database is unavailable.")
         return PlainTextResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
 
