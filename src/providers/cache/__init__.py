@@ -1,3 +1,3 @@
-from .client import get_client
+from .client import connection_pool, get_client
 
-__all__ = ["get_client"]
+__all__ = ["connection_pool", "get_client"]
