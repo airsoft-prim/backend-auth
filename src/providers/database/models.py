@@ -66,8 +66,8 @@ class User(TimestampedModel):
 
     __tablename__ = "users"
     __table_args__ = (
-        {"schema": "auth"},
         Index("uq_users_email_lower", text("lower(email)"), unique=True),
+        {"schema": "auth"},
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
