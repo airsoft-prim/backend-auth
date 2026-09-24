@@ -69,6 +69,7 @@ ignore = [
     "ANN401",
     "RUF001",
     "RUF002",
+    "RUF003",
 ]
 
 [lint.mccabe]
