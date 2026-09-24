@@ -89,7 +89,5 @@ class User(TimestampedModel):
         server_default=UserRole.USER.value,
     )
 
-    disabled: Mapped[bool] = mapped_column(
-        Boolean, default=False, server_default=false()
-    )
+    disabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
