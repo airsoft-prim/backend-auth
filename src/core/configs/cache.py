@@ -16,6 +16,8 @@ class CacheConfiguration(BaseSettings):
     USER: str | None = Field(default=None)
     PSWD: str | None = Field(default=None)
 
+    MAX_CONNECTIONS: int = Field(default=20)
+
     @property
     def DSN(self) -> RedisDsn:  # noqa: N802
         """Возвращает провалидированный DSN Redis."""
