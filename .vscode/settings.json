@@ -1,0 +1,44 @@
+{
+  "ruff.configuration": "${workspaceFolder}/ruff.toml",
+  "ruff.configurationPreference": "filesystemFirst",
+  "ruff.nativeServer": "on",
+  "ruff.importStrategy": "fromEnvironment",
+  "ruff.path": ["${workspaceFolder}/.venv/Scripts/ruff.exe"],
+
+  "ty.configurationFile": "${workspaceFolder}/ty.toml",
+  "ty.diagnosticMode": "workspace",
+  "ty.importStrategy": "fromEnvironment",
+  "ty.path": ["${workspaceFolder}/.venv/Scripts/ty.exe"],
+
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "explicit",
+      "source.organizeImports": "explicit"
+    }
+  },
+
+  "editor.rulers": [100],
+
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.ruff_cache": true,
+    "**/.pytest_cache": true
+  },
+  "search.exclude": {
+    "**/.venv": true,
+    "**/__pycache__": true,
+    "**/.ruff_cache": true,
+    "**/.pytest_cache": true
+  },
+
+  "markdownlint.config": { "MD013": false },
+
+  "cSpell.language": "en,ru",
+  "cSpell.words": ["airsoft", "uvicorn", "asyncpg", "pydantic", "pwdlib", "pyjwt", "loguru", "jwks"]
+}
