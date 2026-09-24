@@ -1,0 +1,2 @@
+class JWKSService:
+    pass
