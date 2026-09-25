@@ -3,14 +3,14 @@
   "ruff.configurationPreference": "filesystemFirst",
   "ruff.nativeServer": "on",
   "ruff.importStrategy": "fromEnvironment",
-  "ruff.path": ["${workspaceFolder}/.venv/Scripts/ruff.exe"],
+  "ruff.path": ["${workspaceFolder}/.venv/bin/ruff", "${workspaceFolder}/.venv/Scripts/ruff.exe"],
 
   "ty.configurationFile": "${workspaceFolder}/ty.toml",
   "ty.diagnosticMode": "workspace",
   "ty.importStrategy": "fromEnvironment",
-  "ty.path": ["${workspaceFolder}/.venv/Scripts/ty.exe"],
+  "ty.path": ["${workspaceFolder}/.venv/bin/ty", "${workspaceFolder}/.venv/Scripts/ty.exe"],
 
-  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv",
   "python.testing.pytestEnabled": true,
   "python.testing.unittestEnabled": false,
 
