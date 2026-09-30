@@ -3,16 +3,15 @@ from typing import Any, overload
 from uuid import UUID
 
 from sqlalchemy import ColumnElement, delete as delete_, inspect, select
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase
 
-from src.general.exceptions import RepositoryError
+from src.providers import Repository
 
 type EntityID = UUID | int
 
 
-class DatabaseRepository[D: DeclarativeBase]:
+class DatabaseRepository[D: DeclarativeBase](Repository):
     """Репозиторий для взаимодействия с сущностями в БД."""
 
     model: type[D]
@@ -63,13 +62,9 @@ class DatabaseRepository[D: DeclarativeBase]:
             (id_column.in_(id_)) if isinstance(id_, Sequence) else (id_column == id_)
         )
 
-        try:
+        with self._as_repository_error(f"{self.model.__name__} getting error."):
             result = await self._session.execute(stmt)
             rows = list(result.scalars().all())
-
-        except SQLAlchemyError as error:
-            msg = f"{self.model.__name__} getting error."
-            raise RepositoryError(msg) from error
 
         if not rows:
             return None
@@ -95,12 +90,8 @@ class DatabaseRepository[D: DeclarativeBase]:
         else:
             self._session.add(entity)
 
-        try:
+        with self._as_repository_error(f"{self.model.__name__} saving error."):
             await self._session.commit()
-
-        except SQLAlchemyError as error:
-            msg = f"{self.model.__name__} saving error."
-            raise RepositoryError(msg) from error
 
     @overload
     async def delete(self, id_: EntityID) -> None: ...
@@ -121,10 +112,6 @@ class DatabaseRepository[D: DeclarativeBase]:
             (id_column.in_(id_)) if isinstance(id_, Sequence) else (id_column == id_)
         )
 
-        try:
+        with self._as_repository_error(f"{self.model.__name__} deleting error."):
             await self._session.execute(stmt)
             await self._session.commit()
-
-        except SQLAlchemyError as error:
-            msg = f"{self.model.__name__} deleting error."
-            raise RepositoryError(msg) from error

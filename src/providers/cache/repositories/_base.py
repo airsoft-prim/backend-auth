@@ -5,10 +5,12 @@ from typing import Any, Literal
 
 from redis.asyncio import Redis
 
+from src.providers import Repository
+
 type KeyStub = Literal["*"]
 
 
-class RedisRepository:
+class RedisRepository(Repository):
     """Репозиторий для взаимодействия с данными в Redis."""
 
     _key_template: Template
