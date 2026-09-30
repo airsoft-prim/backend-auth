@@ -32,20 +32,23 @@ def _get_pool(db: int) -> ConnectionPool:
     return _pools[db]
 
 
-def create_client(bounded_db: int) -> Redis:
+def create_client(bounded_db: int | None = None) -> Redis:
     """Создаёт клиент Redis, привязанный к указанной БД.
 
     Клиент берёт соединение из пула этой БД и держит его до закрытия, поэтому передаётся
     потребителям с ограниченным временем жизни: на время запроса или работы фоновой задачи.
 
     Args:
-        bounded_db (int): Номер логической БД Redis.
+        bounded_db (int | None, optional): Номер логической БД Redis. Если не передан,
+            берётся БД из конфигурации (`CACHE_DB`). Defaults to None.
 
     Returns:
         Redis: Асинхронный клиент Redis.
     """
+    db = config.cache.DB if bounded_db is None else bounded_db
+
     return Redis(
-        connection_pool=_get_pool(bounded_db),
+        connection_pool=_get_pool(db),
         single_connection_client=True,
         client_name=config.app.NAME,
     )
@@ -60,7 +63,7 @@ async def get_client() -> AsyncGenerator[Redis]:
     Yields:
         AsyncGenerator[Redis]: Асинхронный клиент Redis.
     """
-    client = create_client(config.cache.DB)
+    client = create_client()
 
     async with client as connected_client:
         yield connected_client

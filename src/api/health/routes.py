@@ -5,7 +5,6 @@ from redis import RedisError
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.core.configs import config
 from src.providers.cache import create_client
 from src.providers.database import engine
 
@@ -42,7 +41,7 @@ async def readiness_healthcheck() -> PlainTextResponse:
         return PlainTextResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
 
     try:
-        async with create_client(config.cache.DB) as client:
+        async with create_client() as client:
             await client.ping()
 
     except RedisError, Exception:  # noqa: BLE001
