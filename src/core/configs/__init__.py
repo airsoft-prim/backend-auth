@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from .app import ApplicationConfiguration
 from .cache import CacheConfiguration
 from .database import PostgresConfiguration
+from .security import SecurityConfiguration
 
 
 class Configs(BaseModel):
@@ -13,6 +14,7 @@ class Configs(BaseModel):
     app: ApplicationConfiguration = ApplicationConfiguration()
     cache: CacheConfiguration = CacheConfiguration()
     database: PostgresConfiguration = PostgresConfiguration()
+    security: SecurityConfiguration = SecurityConfiguration()
 
 
 @lru_cache

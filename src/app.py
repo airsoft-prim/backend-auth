@@ -7,6 +7,7 @@ from loguru import logger
 
 from src.api import main_router
 from src.core.configs import config
+from src.rotation import get_rotation_daemon
 
 APP_DESCRIPTION: Final[str] = """
 Сервер аутентификации для портала Airsoft-Prim.
@@ -16,8 +17,12 @@ APP_DESCRIPTION: Final[str] = """
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
     """Lifespan приложения FastAPI."""
-
     logger.info("Application starting up...")
+
+    get_rotation_daemon().start()
+    logger.success("JWK Rotation Daemon started.")
+
+    logger.success("Application started.")
     logger.info(f"Debug mode is {'OOFNF'[config.app.DEBUG :: 2]}.")
 
     yield
@@ -28,7 +33,7 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
 application = FastAPI(
     title=config.app.NAME,
     description=APP_DESCRIPTION,
-    version="0.1.0",
+    version="1.0.0",
     lifespan=lifespan,
 )
 
