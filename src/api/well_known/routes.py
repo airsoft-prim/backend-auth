@@ -1,5 +1,10 @@
-from fastapi import APIRouter
+from typing import Annotated
 
+from fastapi import APIRouter, Depends
+
+from src.services.jwk import JWKPublishingService
+
+from .deps import get_jwk_publishing_service
 from .docs import JWKS_DOCS
 from .schemas import JSONWebKeySet
 
@@ -7,10 +12,15 @@ router = APIRouter(prefix="/.well-known", tags=["Служебные метада
 
 
 @router.get("/jwks.json", **JWKS_DOCS)
-async def get_jwks() -> JSONWebKeySet:
+async def get_jwks(
+    service: Annotated[JWKPublishingService, Depends(get_jwk_publishing_service)],
+) -> JSONWebKeySet:
     """Функция получения набора публичных ключей подписи токенов.
 
+    Args:
+        service (JWKPublishingService): Сервис публикации публичных JWK.
+
     Returns:
-        KeySet: Набор ключей JWKS без ключей внутри.
+        JSONWebKeySet: Набор публичных ключей подписи из кеша.
     """
-    return JSONWebKeySet(keys=[])
+    return JSONWebKeySet.model_validate({"keys": list(await service.collect())})

@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 class PublicJSONWebKey(BaseModel):
     """Общие поля публичного ключа JWK (RFC 7517 §4)."""
 
+    kty: str
     use: Literal["sig", "enc"]
     kid: str
 
