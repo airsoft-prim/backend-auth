@@ -4,6 +4,8 @@ from redis.asyncio import ConnectionPool, Redis
 
 from src.core.configs import config
 
+from ._enums import StorageNumber
+
 _pools: dict[int, ConnectionPool] = {}
 
 
@@ -45,7 +47,7 @@ def create_client(bounded_db: int | None = None) -> Redis:
     Returns:
         Redis: Асинхронный клиент Redis.
     """
-    db = config.cache.DB if bounded_db is None else bounded_db
+    db = StorageNumber.DEFAULT.value if bounded_db is None else bounded_db
 
     return Redis(
         connection_pool=_get_pool(db),
@@ -63,13 +65,11 @@ async def get_client() -> AsyncGenerator[Redis]:
     Yields:
         AsyncGenerator[Redis]: Асинхронный клиент Redis.
     """
-    client = create_client()
-
-    async with client as connected_client:
+    async with create_client() as connected_client:
         yield connected_client
 
 
-async def get_bounded_client(to_db: int = 0) -> Callable[[], AsyncGenerator[Redis]]:
+def get_bounded_client(to_db: int = 0) -> Callable[[], AsyncGenerator[Redis]]:
     """Создаёт фабрику зависимостей с клиентом Redis, привязанным к указанной БД.
 
     Возвращается именно фабрика: её подставляют как зависимость FastAPI, и каждый вызов

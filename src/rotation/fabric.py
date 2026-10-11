@@ -1,14 +1,9 @@
-from typing import Final
-
 from src.core.configs import config
-from src.providers.cache import create_client
+from src.providers.cache import StorageNumber, create_client
 from src.providers.cache.repositories import PublicJWKRepository
 from src.services.jwk import JWKGenerationService
 
 from .daemon import JWKRotationDaemon
-
-# Отдельная БД для публичных ключей.
-KEY_STORE_DB: Final[int] = 1
 
 
 def get_rotation_daemon() -> JWKRotationDaemon:
@@ -17,7 +12,7 @@ def get_rotation_daemon() -> JWKRotationDaemon:
     Returns:
         JWKRotationDaemon: Готовый к запуску демон ротации.
     """
-    repository = PublicJWKRepository(create_client(KEY_STORE_DB))
+    repository = PublicJWKRepository(create_client(StorageNumber.KEYS.value))
     jwk_service = JWKGenerationService(config.security.KEY_STORE_DIRECTORY, repository)
 
     return JWKRotationDaemon(
