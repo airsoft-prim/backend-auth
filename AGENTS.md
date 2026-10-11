@@ -1,207 +1,158 @@
 # AGENTS.md
 
-Инструкции для AI-агентов (и людей), работающих в этом репозитории.
+Working instructions for AI agents in this repository. Treat it as an operating checklist, not
+documentation: follow it, keep it short.
 
-## Документы проекта
+## Where to look
 
-| Файл                   | Назначение                                                                                                             |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `README.md`            | Презентационная витрина для людей: кратко и красиво о проекте, запуске и ссылках. Не разрастается до полного описания. |
-| `AGENTS.md`            | Этот файл: краткое описание проекта, ожидания, стек, структура, команды, code style, правила работы.                   |
-| `docs/DOMAIN.md`       | Полное описание домена: акторы, сущности, сценарии, политики, roadmap. Источник истины по предметной области.          |
-| `docs/API_AUTH.md`     | HTTP-контракт слоя `/auth`: маршруты, схемы данных, коды ответов и открытые вопросы.                                   |
-| `docs/API_PASSWORD.md` | HTTP-контракт слоя `/password`: смена и сброс пароля — маршруты, схемы данных, коды ответов.                           |
-| `docs/API_HEALTH.md`   | Пробы состояния сервиса `/health/*`: что проверяется и как отвечает.                                                   |
-| `docs/`                | Остальная проектная документация.                                                                                      |
+| Path                    | Use it for                                           |
+| ----------------------- | ---------------------------------------------------- |
+| `docs/DOMAIN.md`        | Domain source of truth: entities, policies, roadmap  |
+| `docs/API_AUTH.md`      | `/auth` HTTP contract: routes, schemas, status codes |
+| `docs/API_PASSWORD.md`  | `/password` HTTP contract: change and reset password |
+| `docs/API_HEALTH.md`    | `/health/*` probes: liveness, readiness              |
+| `docs/API_WELLKNOWN.md` | `/.well-known/*` contract: JWKS, discovery           |
+| `README.md`             | Human-facing showcase: what it is, how to run it     |
 
-## 1. Проект кратко
+Read `docs/DOMAIN.md` and the code the task touches before proposing a solution.
 
-`backend-auth` — сервис аутентификации страйкбольного портала Airsoft Prim. Отдельный backend-сервис
-в одном ряду с `backend-api`, `backend-media` и `frontend`; отвечает за пользователей, их учётные данные
-и выдачу токенов, по которым остальные сервисы портала опознают пользователя.
+## Scope
 
-Задача сервиса: быть единственной точкой правды о том, кто такой пользователь и что ему разрешено.
-Сервис выпускает JWT access-токен (срок жизни 24 часа, подпись `EdDSA` на Ed25519) и публикует публичные
-ключи подписи, чтобы остальные сервисы проверяли токены локально, без похода в auth на каждый запрос.
+- Single source of truth for Airsoft Prim portal users: registration, login, logout; passwords hashed
+  with bcrypt (`pwdlib[bcrypt]`), change and reset; roles `admin` / `moderator` / `user` with block,
+  unblock, deactivate, restore; user administration over the API; login audit events.
+- Tokens: 24-hour JWT access token signed with EdDSA over Ed25519; public keys published as JWKS at
+  `/.well-known/jwks.json` so other services verify tokens locally.
+- Policies: password 8-72 bytes with a lowercase, an uppercase, a digit and a special character;
+  username 3-30 chars of latin letters, digits, `_`, `-`.
+- Not implemented and not wanted unprompted: refresh tokens, email confirmation, OAuth2.0 / OIDC
+  (discovery document, standard grants, external clients). Do not build them on the side, but do not
+  block them either - keep token and route formats compatible with the standard.
 
-Подробное описание домена — `docs/DOMAIN.md`. Ниже только то, что нужно для работы с кодом.
-
-## 2. Что ожидается от сервиса сейчас
-
-- Аутентификация пользователей портала: регистрация, вход, выход.
-- Учётные данные: хеширование пароля bcrypt (`pwdlib[bcrypt]`), смена пароля, сброс пароля.
-- Политики: пароль — 8–72 байта, обязательны строчная и заглавная буквы, цифра и спецсимвол; username —
-  3–50 символов, латиница, цифры, `_` и `-`.
-- Роли и права: `admin` / `moderator` / `user`, блокировка/разблокировка и деактивация/восстановление аккаунта.
-- Выпуск токенов: JWT access-токен на 24 часа, публикация JWKS по `/.well-known/jwks.json`,
-  чтобы клиентские сервисы проверяли подпись публичными ключами.
-- Администрирование пользователей через API: управление ролями, блокировки.
-- Аудит событий входа (кто, когда, с какого контекста).
-
-## 3. Что планируется в будущем
-
-- Refresh-токены и подтверждение email — сейчас признаны избыточными: пока хватает access-токена на
-  24 часа, а регистрация обходится без подтверждения адреса.
-- OAuth2.0 и OpenID Connect: discovery-документ `/.well-known/openid-configuration`,
-  стандартные grant'ы (`password`, `refresh_token`, `client_credentials`), поддержка внешних клиентов.
-
-Ключевое ограничение: это **планируемые** возможности. Сейчас сервис аутентифицирует только пользователей
-портала. Не реализуй OAuth2/OIDC «заодно» и не проектируй под них архитектуру без явного запроса —
-но и не мешай им: код не должен закрывать путь к их добавлению позже
-(например, не вшивай в формат токена и роутов решения, несовместимые со стандартом).
-
-## 4. Стек
+## Stack
 
 - Python 3.14 (`requires-python = ">=3.14"`, `.python-version`).
-- FastAPI + Uvicorn; Pydantic v2 + pydantic-settings для конфигурации.
-- SQLAlchemy 2.0 (async) + asyncpg, PostgreSQL (схема `auth`), Alembic для миграций.
-- Redis (`redis.asyncio`), PyJWT, cryptography, pwdlib (`bcrypt`), aiofiles, Loguru.
-- Пакеты и окружение — `uv` (`pyproject.toml`, `uv.lock`).
-- Линт/формат — `ruff`, проверка типов — `ty`, тесты — `pytest`.
+- FastAPI + Uvicorn; Pydantic v2 + pydantic-settings.
+- SQLAlchemy 2.0 async + asyncpg, PostgreSQL (schema `auth`), Alembic migrations.
+- Redis (`redis.asyncio`), PyJWT, cryptography, pwdlib, aiofiles, Loguru.
+- `uv` for packages and environment (`pyproject.toml`, `uv.lock`, `default-groups = "all"`).
+- `ruff` for lint and format, `ty` for types, `pytest` for tests.
 
-Инструменты разработки живут в `[dependency-groups]` (`dev`, `test`), а не в основных `dependencies`.
+Dev tooling belongs to `[dependency-groups]` (`dev`, `test`), never to `dependencies`.
 
-## 5. Структура репозитория
+## Layout
 
 ```text
-main.py                     точка входа: uvicorn + app из src
-src/app.py                  сборка FastAPI-приложения, lifespan
-src/api/                    HTTP-слой: роутеры по разделам
-    auth/                   регистрация, вход и выход
-    health/                 liveness / readiness
-    password/               смена и сброс пароля
-    well_known/             /.well-known/jwks.json
-src/core/                   сквозные настройки и инфраструктура приложения
-    configs/                секции конфигурации (APP_/CACHE_/DATABASE_), единый config
-    logging/                настройка логирования
-src/services/               доменные службы: JWT, JWKS
-src/general/                общие типы и enum'ы проекта
-src/providers/              подключения к внешним ресурсам и репозитории
-    database/               engine/models/session, repositories/
-    cache/                  client, repositories/
-migrations/                 Alembic
-tests/                      pytest
-docs/                       проектная документация (DOMAIN.md и др.)
+main.py            entry point: uvicorn + app from src
+src/app.py         FastAPI assembly, lifespan
+src/api/           HTTP layer: auth/, health/, password/, well_known/
+src/core/          cross-cutting config (configs/) and logging
+src/services/      domain services: JWT, JWKS
+src/general/       shared types and enums
+src/providers/     external resources: database/ (engine, models, repositories), cache/
+migrations/        Alembic
+tests/             pytest
+docs/              project documentation
 ```
 
-Направление зависимостей: `api` → `services` → (`providers`, `core`) → `general`.
-Прикладной код не ходит в БД напрямую из роутеров: доступ к данным и внешним ресурсам — через
-`providers/repositories/`, а доменная логика — в `services/`. Провайдеры не знают про HTTP.
+Dependency direction: `api` -> `services` -> (`providers`, `core`) -> `general`.
+Routers never reach the database directly: data access goes through `providers/repositories/`, domain
+logic through `services/`; providers know nothing about HTTP. Attach a new router to `main_router` in
+`src/api/__init__.py`.
 
-## 6. Команды
+## Commands
 
 ```bash
-uv sync                                   # окружение (default-groups = "all": dev + test)
-uv run python main.py                     # запуск сервиса, http://localhost:8000
-uv run ruff check .                       # линт
-uv run ruff format .                      # формат
-uv run ty check                           # проверка типов
-uv run pytest                             # тесты
-uv run pytest -n auto                     # параллельно (pytest-xdist)
-uv run pytest --cov                       # с покрытием
+uv sync                  # environment (default-groups = "all": dev + test)
+uv run python main.py    # service on http://localhost:8000
+uv run ruff check .      # lint
+uv run ruff format .     # format
+uv run ty check          # types
+uv run pytest            # tests
+uv run pytest -n auto    # parallel (pytest-xdist)
+uv run pytest --cov      # with coverage
 
-# миграции: путь к БД передаётся через ALEMBIC_URI
+# migrations: the database URL comes from ALEMBIC_URI
 ALEMBIC_URI="postgresql+asyncpg://user:pass@localhost:5432/db" uv run alembic upgrade head
 ALEMBIC_URI="postgresql+asyncpg://user:pass@localhost:5432/db" uv run alembic revision --autogenerate -m "add something"
 ```
 
-Конфигурация читается из окружения с префиксами: `APP_` (приложение), `CACHE_` (Redis),
-`DATABASE_` (PostgreSQL). `APP_DEBUG=true` включает режим отладки и авто-reload
-(см. `main.py`, `src/core/configs/app.py`). Секреты в репозиторий не попадают: `.env` в `.gitignore`.
+Configuration comes from the environment with prefixes `APP_`, `CACHE_`, `DATABASE_`;
+`APP_DEBUG=true` enables debug and auto-reload. Secrets never enter the repository (`.env` is ignored).
 
-Часть проверок (readiness, работа с БД и кешем, миграции) требует реальных PostgreSQL и Redis —
-если их нет, явно скажи, что именно осталось непроверенным, а не выдавай зелёный результат за проверенный.
+Readiness, database and cache work, and migrations need real PostgreSQL and Redis. Without them, say
+exactly what stayed unverified instead of reporting a green run as verified.
 
-## 7. Code style
+## Code style
 
-Источник истины — конфиги, а не этот раздел: `ruff.toml` (линт и формат) и `ty.toml` (типы).
-В проекте используются **нестандартные, довольно строгие настройки ruff**: `line-length = 100`,
-`target-version = "py314"`, двойные кавычки и включённые `C90, N, UP, S, BLE, B, C4, DTZ, EM, FA, ISC,
-PIE, PT, SLF, SIM, ARG, ERA, A, F, Q, ASYNC, E, W, T20, ANN, PL, RET, RUF, PYI, PD`
-(в том числе bandit, pylint и flake8-annotations). Пиши код в соответствии с этой конфигурацией
-и перед завершением задачи прогоняй `uv run ruff check .`, `uv run ruff format .`, `uv run ty check`.
+Source of truth is `ruff.toml` and `ty.toml`, not this section. Expect `line-length = 100`,
+`target-version = "py314"`, double quotes, and rule sets `C90, N, UP, S, BLE, B, C4, DTZ, EM, FA, ISC,
+PIE, PT, SLF, SIM, ARG, ERA, A, F, Q, ASYNC, E, W, T20, ANN, PL, RET, RUF, PYI, PD`.
 
-Что из этого чаще всего влияет на код:
+- Annotate everything, return types included (`ANN`).
+- No `print` (`T20`): log through `loguru.logger`.
+- `assert` only in tests (`S101` off for `tests/**`); application code checks explicitly.
+- No commented-out code (`ERA`).
+- Timezone-aware datetimes only (`DTZ`): `DateTime(timezone=True)` in models, `datetime.now(UTC)` in code.
+- Exception text goes to a variable first (`EM`): `msg = "Invalid database name."; raise ValueError(msg)`.
+- No builtin shadowing (`A`), no other objects' private attributes (`SLF`), shallow branching (`SIM`,
+  `RET`, `C90`, `max-complexity = 10`).
+- Russian is fine in strings and docstrings (`RUF001` / `RUF002` are off); error and exception messages
+  stay English because they reach API responses and logs.
+- Google-style docstrings (`Args` / `Returns` / `Yields`), Russian allowed.
+- `src/core/configs/*` attributes are `UPPER_CASE` and mirror env variable names; wrapper properties
+  need `# noqa: N802` (see `CacheConfiguration.DSN`).
+- One sorted import list (`force-sort-within-sections`), with `combine-as-imports`.
+- New public module members go to `__all__` (see `src/__init__.py`, `src/api/__init__.py`).
+- OpenAPI descriptions live in `docs.py` next to the router, typed with `RouteDocs` (pattern:
+  `src/api/health/docs.py`).
+- Pad markdown tables to equal widths in every `.md` file, this one included; realign a whole table
+  block when editing it.
 
-- Аннотации типов обязательны везде (`ANN`), включая возвращаемый тип.
-- `print` запрещён (`T20`) — логирование только через `loguru.logger`.
-- `assert` — только в тестах (`S101` отключён для `tests/**`), в прикладном коде проверки явные.
-- Закомментированный код удаляется (`ERA`).
-- Дата/время — только timezone-aware (`DTZ`): `DateTime(timezone=True)` в моделях, `datetime.now(UTC)` в коде.
-- Текст исключения сначала в переменную (`EM`): `msg = "Invalid database name."; raise ValueError(msg)`.
-- Не перекрывай имена builtins (`A`), не трогай приватные атрибуты чужих объектов (`SLF`),
-  избегай лишних ветвлений и вложенности (`SIM`, `RET`, `C90`, `max-complexity = 10`).
-- Русский текст в строках и docstring разрешён: `RUF001` / `RUF002` отключены именно для этого.
-- Тексты ошибок и сообщений исключений — только на английском, даже если остальной текст русский: они
-  уходят в ответы API и в логи. Образец — `msg = "Invalid database name."` в `src/core/configs/database.py`.
-- Docstring — Google-стиль (`Args` / `Returns` / `Yields`) на русском языке; образец — `src/api/health/routes.py`.
-- Атрибуты конфигурации в `src/core/configs/*` — `UPPER_CASE`, повторяют env-переменные;
-  свойства-обёртки для этого помечаются `# noqa: N802` (см. `CacheConfiguration.DSN`).
-- Секция импортов сортируется единым списком (`force-sort-within-sections`), `combine-as-imports`.
-- Новые публичные сущности модуля — в `__all__` (см. `src/__init__.py`, `src/api/__init__.py`).
+Reference patterns: `src/api/health/routes.py`, `src/core/configs/database.py`,
+`src/providers/database/models.py`. Before finishing, run `uv run ruff check .`, `uv run ruff format .`,
+`uv run ty check`.
 
-## 8. Тесты
+## Tests
 
-- `pytest.ini`: `testpaths = tests`, `python_files = test_*.py`, `asyncio_mode = auto`
-  (async-тесты пишутся без явного декоратора), логирование в консоль на уровне DEBUG.
-- Фикстуры — `tests/conftest.py`. Файлы — `tests/test_*.py`.
-- Покрывать стоит то, где ошибка дорого стоит: доменные сервисы (JWT/JWKS), валидацию конфигурации,
-  работу с БД и кешем, поведение эндпоинтов (коды ответов, форматы).
-- Тест, которому нужны реальные PostgreSQL/Redis, должен падать или пропускаться явно и понятно —
-  не «зеленеть» из-за отсутствия инфраструктуры.
+- `pytest.ini`: `testpaths = tests`, `python_files = test_*.py`, `asyncio_mode = auto` (no decorator for
+  async tests), console logging at DEBUG. Fixtures in `tests/conftest.py`.
+- Cover what is expensive to get wrong: JWT / JWKS services, configuration validation, database and
+  cache access, endpoint behavior (status codes, payload shapes).
+- A test needing real PostgreSQL or Redis fails or skips loudly; never pass just because infrastructure
+  is missing.
 
-## 9. Документация и комментарии
+## Comments and docs
 
-- README.md — презентационный и компактный: что за проект, как запустить, куда смотреть дальше.
-  Полные описания туда не пишутся.
-- `docs/DOMAIN.md` — полное описание домена; при изменении доменной логики обновляй его.
-- Комментарии — только про неочевидные решения, инварианты и ограничения
-  (пример по духу: комментарий к `NAMING_CONVENTION` в `src/providers/database/models.py` — он объясняет,
-  зачем нужен единый набор шаблонов имён, а не пересказывает код).
-  Комментарий, который пересказывает код, — лишний.
-- Поясняющие комментарии уместны только в коде. В служебных и конфигурационных файлах (`ruff.toml`, `ty.toml`,
-  `pyproject.toml`, `pytest.ini`, `alembic.ini` и подобных) агент вносит правки без комментариев: пояснения
-  там пишет только владелец проекта, даже если значение или правило выглядят неочевидными. Документации
-  (`docs/`, `README.md`, этот файл) это не касается — в них пояснения нужны.
-- Описания эндпоинтов для OpenAPI выносятся в `docs.py` рядом с роутером и типизируются `RouteDocs`
-  (образец: `src/api/health/docs.py`). Роутер подключается к общему `main_router` в `src/api/__init__.py`.
-- Таблицы в markdown — ровные, во всех `.md` файлах репозитория (включая этот): ячейки добиваются
-  пробелами, строки-разделители — дефисами под ширину колонки. Ширина считается по отображаемой ширине
-  символа: эмодзи (`✅`, `🚧`, `⬜`) — 2 колонки, кириллица — 1. Правя таблицу, выравнивай весь блок,
-  а не только изменённые строки.
+- Comment non-obvious decisions, invariants and constraints; a comment that restates the code is noise
+  (tone reference: `NAMING_CONVENTION` in `src/providers/database/models.py`).
+- In service and config files (`ruff.toml`, `ty.toml`, `pyproject.toml`, `pytest.ini`, `alembic.ini`) edit
+  without comments: explanations there are the project owner's job. Markdown docs do need explanations.
+- `README.md` stays a compact showcase; update `docs/DOMAIN.md` when domain logic changes.
 
-## 10. Git
+## Git
 
-- Conventional Commits со скоупом, как в истории: `feat(api): ...`, `fix(config): ...`, `chore(deps): ...`.
-  Скоуп — слой или модуль (`api`, `core`, `providers`, `services`, `general`, `migrations`, `config`, `deps`).
-  Заголовок — в императиве по-английски, как в соседних коммитах.
-- Один коммит — одно логически цельное изменение; смешанные коммиты («заодно починил») не делаются.
-- Основная ветка — `main`. Новые ветки, коммиты и `push` — только по явной просьбе.
+- Conventional Commits with a layer or module scope: `feat(api): ...`, `fix(config): ...`,
+  `chore(deps): ...`; imperative English subject, as in existing history.
+- One commit is one coherent change; no mixed commits.
+- Main branch is `main`. New branches, commits and `push` only on an explicit request.
 
-## 11. Правила работы агента
+## Forbidden without an explicit request
 
-Что можно:
+- Hand-editing the database schema. Tables, columns, indexes and enums change only through Alembic
+  migrations in `migrations/` (autogenerated from `BaseModel.metadata`); no manual database edits, no
+  edits to applied migrations.
+- Editing other repositories (`backend-api`, `backend-media`, `frontend`).
+- Adding dependencies or modifying `pyproject.toml` / `uv.lock`.
+- Changing public contracts: endpoint URLs, request and response formats, env variable names.
+- Weakening security: logging secrets, passwords or tokens; disabling or bypassing checks; committing
+  signing keys, `.env` or other secrets.
+- Refactoring, renaming or "improving" anything outside the task.
+- Extending the service towards OAuth2 / OIDC.
 
-- Читать код и документацию, запускать линтеры, проверку типов и тесты.
-- Правки в этом репозитории в рамках поставленной задачи.
+## Workflow
 
-Что нельзя (без явной просьбы):
-
-- Менять схему БД вручную: любые изменения таблиц, колонок, индексов, enum'ов — только через Alembic-миграции
-  в `migrations/` (автогенерация от `BaseModel.metadata`), без ручных правок БД и без правки уже
-  применённых миграций.
-- Править другие репозитории (`backend-api`, `backend-media`, `frontend`).
-- Добавлять зависимости и менять `pyproject.toml` / `uv.lock`.
-- Менять публичные контракты: URL эндпоинтов, форматы запросов и ответов, имена env-переменных.
-- Ослаблять безопасность: логировать секреты, пароли и токены; отключать или обходить проверки;
-  коммитить ключи подписи, `.env` и прочие секреты.
-- Делать попутный рефакторинг, переименования и «улучшения» вне задачи.
-- Расширять сервис до OAuth2/OIDC (см. раздел 3).
-
-Как работать:
-
-1. Сначала прочитай `docs/DOMAIN.md` и относящийся к задаче код, потом предлагай решение.
-2. Делай минимальное связное изменение, следуя слоям и соглашениям проекта.
-3. Проверяй результат: `uv run ruff check .`, `uv run ruff format .`, `uv run ty check`, `uv run pytest`.
-4. В отчёте говори, что именно изменено и что реально проверено; если что-то проверить не удалось
-   (нет PostgreSQL/Redis, нет покрытия тестами) — скажи это прямо.
+1. Read the domain and the relevant code, then propose a solution.
+2. Make the smallest coherent change, following the layering and conventions above.
+3. Verify: `uv run ruff check .`, `uv run ruff format .`, `uv run ty check`, `uv run pytest`.
+4. Report what changed and what was actually verified; state plainly what could not be checked.
