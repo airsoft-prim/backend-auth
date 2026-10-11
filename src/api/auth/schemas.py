@@ -1,32 +1,36 @@
 from datetime import datetime
 import re
-from typing import Final, Literal
+from typing import Annotated, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, SecretStr, field_validator
 
 from src.general.enums import UserRole
 
-# Классы символов политики пароля (docs/DOMAIN.md §7) в нотации ASCII.
+# Классы символов политики пароля в нотации ASCII.
 # Пароль должен содержать хотя бы один(ну): Спец. символ, заглавную и строчную буквы, цифру.
-# Спец. символы — ASCII-пунктуация, как [:punct:] в POSIX: коды 0x21–0x2F, 0x3A–0x40,
-# 0x5B–0x60 и 0x7B–0x7E. Символ вне ASCII (например, эмодзи) требованию не отвечает,
-# поэтому здесь диапазоны, а не `[^\w\s]`: \w в Python знает и о не-ASCII символах.
+# Диапазон [^\w\s] позволяет не захватывать символы вне ASCII (напр. Эмодзи).
 PASSWORD_REQUIREMENTS: Final[re.Pattern[str]] = re.compile(
     r"^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!-/:-@\[-`{-~])",
     re.DOTALL,
 )
 
-
-class RegisterRequestBody(BaseModel):
-    """Тело запроса на регистрацию пользователя."""
-
-    username: str = Field(
+# Политика username общая для регистрации и входа.
+Username = Annotated[
+    str,
+    Field(
         min_length=3,
         max_length=30,
         pattern=r"^[A-Za-z][A-Za-z0-9_-]*$",
         description="Логин учётной записи.",
         examples=["Oidaho"],
-    )
+    ),
+]
+
+
+class RegisterRequestBody(BaseModel):
+    """Тело запроса на регистрацию пользователя."""
+
+    username: Username
     email: EmailStr = Field(description="Адрес электронной почты.", examples=["user@example.ru"])
     password: SecretStr = Field(min_length=8, max_length=72, description="Пароль учётной записи.")
 
@@ -54,7 +58,7 @@ class RegisterRequestBody(BaseModel):
 class LoginRequestBody(BaseModel):
     """Тело запроса на вход в систему."""
 
-    email: EmailStr = Field(description="Адрес электронной почты.", examples=["user@example.ru"])
+    username: Username
     password: SecretStr = Field(description="Пароль учётной записи.")
 
 
