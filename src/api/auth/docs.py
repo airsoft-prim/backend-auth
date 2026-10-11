@@ -4,13 +4,8 @@ from src.general.types import RouteDocs
 
 REGISTER_DOCS: RouteDocs = {
     "summary": "Регистрация пользователя.",
-    "description": (
-        "Создаёт учётную запись портала. Проверяются уникальность username и email "
-        "(email — регистронезависимо) и политики username и пароля. Пароль "
-        "сохраняется в виде bcrypt-хеша, новой учётной записи назначается роль `user`. "
-        "Подтверждение email не требуется."
-    ),
-    "status_code": status.HTTP_201_CREATED,
+    "description": "Создаёт учётную запись портала. Подтверждение email не требуется.",
+    "status_code": status.HTTP_204_NO_CONTENT,
     "deprecated": False,
 }
 

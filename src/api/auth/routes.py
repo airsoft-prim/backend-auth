@@ -1,21 +1,33 @@
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Body, Depends, Response
 
+from src.services.user import UserService
+
+from .deps import get_user_service
 from .docs import LOGIN_DOCS, LOGOUT_DOCS, REGISTER_DOCS
 from .schemas import AccessToken, LoginRequestBody, RegisterRequestBody
 
 router = APIRouter(prefix="/auth", tags=["Аутентификация"])
 
 
-@router.post("/register", **REGISTER_DOCS)
-async def register_user(body: RegisterRequestBody) -> None:
+@router.post("/register", response_class=Response, **REGISTER_DOCS)
+async def register_user(
+    body: Annotated[RegisterRequestBody, Body(...)],
+    service: Annotated[UserService, Depends(get_user_service)],
+) -> None:
     """Функция регистрации нового пользователя.
 
     Args:
         body (RegisterRequestBody): Данные новой учётной записи.
+        service (UserService): Сервис учётных записей.
     """
-    raise NotImplementedError
+
+    await service.register(
+        username=body.username,
+        email=body.email,
+        password=body.password.get_secret_value(),
+    )
 
 
 @router.post("/login", **LOGIN_DOCS)
