@@ -19,11 +19,11 @@ Read `docs/DOMAIN.md` and the code the task touches before proposing a solution.
 ## Scope
 
 - Single source of truth for Airsoft Prim portal users: registration, login, logout; passwords hashed
-  with bcrypt (`pwdlib[bcrypt]`), change and reset; roles `admin` / `moderator` / `user` with block,
+  with Argon2id (`pwdlib[argon2]`), change and reset; roles `admin` / `moderator` / `user` with block,
   unblock, deactivate, restore; user administration over the API; login audit events.
 - Tokens: 24-hour JWT access token signed with EdDSA over Ed25519; public keys published as JWKS at
   `/.well-known/jwks.json` so other services verify tokens locally.
-- Policies: password 8-72 bytes with a lowercase, an uppercase, a digit and a special character;
+- Policies: password 8-72 characters with a lowercase, an uppercase, a digit and a special character;
   username 3-30 chars of latin letters, digits, `_`, `-`.
 - Not implemented and not wanted unprompted: refresh tokens, email confirmation, OAuth2.0 / OIDC
   (discovery document, standard grants, external clients). Do not build them on the side, but do not
