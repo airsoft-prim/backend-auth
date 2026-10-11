@@ -1,4 +1,5 @@
 from base64 import urlsafe_b64encode
+from collections.abc import Sequence
 from hashlib import sha256
 import json
 import os
@@ -17,6 +18,33 @@ from src.general.exceptions import ServiceError
 from src.providers.cache.repositories import PublicJWKRepository
 
 _KEY_FILE_PERMISSIONS: Final[int] = 0o600
+
+
+class JWKPublishingService:
+    """Сервис публикации публичных JWK подписи токенов.
+
+    Отдаёт набор публичных ключей из кеша, чтобы потребители токенов проверяли подпись
+    офлайн, по ключам из JWKS, и не обращались за этим к сервису на каждый запрос.
+    """
+
+    def __init__(self, jwk_repository: PublicJWKRepository) -> None:
+        """Инициализация класса.
+
+        Args:
+            jwk_repository (PublicJWKRepository): Репозиторий публичных JWK.
+        """
+        self._cache = jwk_repository
+
+    async def collect(self) -> Sequence[JWKDict]:
+        """Собирает опубликованные публичные JWK.
+
+        Returns:
+            Sequence[JWKDict]: Публичные JWK, доступные для проверки подписи.
+
+        Raises:
+            RepositoryError: Если обращение к Redis завершилось ошибкой.
+        """
+        return await self._cache.acquire_all()
 
 
 class JWKGenerationService:
