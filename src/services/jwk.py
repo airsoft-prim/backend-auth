@@ -145,6 +145,9 @@ class JWKGenerationService:
 
         return jwk
 
+    # TODO: Вынести чтение и запись приватного ключа в `PrivateJWKRepository`
+    # поверх провайдера FileSystem: доступ к pem-файлу нужен нескольким сервисам,
+    # поэтому работа с файлом здесь — временное решение.
     async def _read_from_file(self, path: Path) -> PyJWK:
         """Читает приватный JWK из PEM-файла.
 
