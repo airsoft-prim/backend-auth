@@ -22,7 +22,7 @@ class RegisterRequestBody(BaseModel):
 
     username: str = Field(
         min_length=3,
-        max_length=50,
+        max_length=30,
         pattern=r"^[A-Za-z][A-Za-z0-9_-]*$",
         description="Логин учётной записи.",
         examples=["Oidaho"],
