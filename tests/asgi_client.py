@@ -59,31 +59,45 @@ class ASGIClient:
         """
         return await self.request("GET", path)
 
-    async def post(self, path: str) -> ASGIResponse:
+    async def post(self, path: str, payload: Any | None = None) -> ASGIResponse:
         """Запрашивает путь методом POST.
 
         Args:
             path (str): Путь запроса.
+            payload (Any | None, optional): Тело запроса: данные, сериализуемые в JSON.
+                None — запрос без тела. Defaults to None.
 
         Returns:
             ASGIResponse: Ответ приложения.
         """
-        return await self.request("POST", path)
+        return await self.request("POST", path, payload=payload)
 
-    async def request(self, method: str, path: str) -> ASGIResponse:
+    async def request(
+        self,
+        method: str,
+        path: str,
+        payload: Any | None = None,
+    ) -> ASGIResponse:
         """Отправляет запрос в приложение.
 
         Args:
             method (str): HTTP-метод.
             path (str): Путь запроса.
+            payload (Any | None, optional): Тело запроса: данные, сериализуемые в JSON.
+                None — запрос без тела. Defaults to None.
 
         Returns:
             ASGIResponse: Ответ приложения.
         """
         messages: list[ASGIMessage] = []
+        body = b"" if payload is None else json.dumps(payload).encode()
+        headers = [(b"host", b"testserver")]
+
+        if payload is not None:
+            headers.append((b"content-type", b"application/json"))
 
         async def receive() -> ASGIMessage:
-            return {"type": "http.request", "body": b"", "more_body": False}
+            return {"type": "http.request", "body": body, "more_body": False}
 
         async def send(message: ASGIMessage) -> None:
             messages.append(message)
@@ -98,7 +112,7 @@ class ASGIClient:
             "query_string": b"",
             "root_path": "",
             "scheme": "http",
-            "headers": [(b"host", b"testserver")],
+            "headers": headers,
             "server": ("testserver", 80),
             "client": ("testclient", 50000),
         }

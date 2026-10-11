@@ -1,8 +1,9 @@
 """Тестовые двойники внешних ресурсов.
 
 Redis заменяется подменой в памяти: проверяется отображение ключей и JSON в
-репозитории, а не работа самого Redis. Настоящий сервер нужен только слою
-интеграционных тестов.
+репозитории, а не работа самого Redis. Учётные записи портала в unit-тестах живут в
+подмене репозитория — так сервисный слой проверяется без PostgreSQL. Настоящие серверы
+нужны только слою интеграционных тестов.
 """
 
 from collections.abc import AsyncIterator, Sequence
@@ -11,7 +12,10 @@ from typing import Any, Self, cast
 
 from redis.asyncio import Redis
 
-__all__ = ["InMemoryRedis", "as_redis"]
+from src.providers.database.models import User
+from src.providers.database.repositories import UserRepository
+
+__all__ = ["InMemoryRedis", "InMemoryUserRepository", "as_redis", "as_user_repository"]
 
 
 class InMemoryPipeline:
@@ -164,3 +168,64 @@ def as_redis(double: InMemoryRedis) -> Redis:
         Redis: Тот же объект в типе клиента Redis.
     """
     return cast("Redis", double)
+
+
+class InMemoryUserRepository:
+    """Подмена репозитория учётных записей: учётные записи в памяти.
+
+    Повторяет только те вызовы, которые нужны сервису учётных записей: поиск по логину
+    и по адресу и сохранение записи. Адрес сравнивается без учёта регистра — как
+    функциональный индекс `lower(email)` в БД. Значения, которые проставляет сама БД
+    (идентификатор, роль, метки времени), подмена не подставляет.
+    """
+
+    def __init__(self) -> None:
+        """Инициализация пустого хранилища."""
+        self.users: list[User] = []
+
+    async def get_by_username(self, username: str) -> User | None:
+        """Возвращает учётную запись по логину.
+
+        Args:
+            username (str): Логин учётной записи.
+
+        Returns:
+            User | None: Учётная запись или None, если логин ещё свободен.
+        """
+        return next((user for user in self.users if user.username == username), None)
+
+    async def get_by_email(self, email: str) -> User | None:
+        """Возвращает учётную запись по адресу без учёта регистра.
+
+        Args:
+            email (str): Адрес электронной почты учётной записи.
+
+        Returns:
+            User | None: Учётная запись или None, если адрес ещё свободен.
+        """
+        lowered_email = email.lower()
+
+        return next((user for user in self.users if user.email.lower() == lowered_email), None)
+
+    async def save(self, entity: User) -> None:
+        """Сохраняет учётную запись в хранилище.
+
+        Args:
+            entity (User): Учётная запись для сохранения.
+        """
+        self.users.append(entity)
+
+
+def as_user_repository(double: InMemoryUserRepository) -> UserRepository:
+    """Приводит подмену к типу репозитория учётных записей.
+
+    Подмена повторяет только вызовы, нужные сервису, но не наследует репозиторий:
+    наследование потребовало бы настоящей сессии БД.
+
+    Args:
+        double (InMemoryUserRepository): Подмена репозитория.
+
+    Returns:
+        UserRepository: Та же подмена в типе репозитория учётных записей.
+    """
+    return cast("UserRepository", double)

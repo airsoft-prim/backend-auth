@@ -8,10 +8,12 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from fastapi import FastAPI
+from pwdlib import PasswordHash
 import pytest
 
 from src.api.well_known.deps import get_jwk_publishing_service
 from src.app import application
+from src.general.security import PASSWORD_HASHER
 from src.providers.cache.repositories import PublicJWKRepository
 from src.services.jwk import JWKGenerationService, JWKPublishingService
 from tests.asgi_client import ASGIClient
@@ -24,6 +26,7 @@ __all__ = [
     "jwk_service",
     "jwks_client",
     "key_store_dir",
+    "password_hash",
     "publishing_service",
     "redis_double",
     "unavailable_repository",
@@ -52,6 +55,19 @@ def api_client(api_app: FastAPI) -> ASGIClient:
         ASGIClient: Клиент HTTP-контракта.
     """
     return ASGIClient(api_app)
+
+
+@pytest.fixture
+def password_hash() -> PasswordHash:
+    """Отдаёт хешер паролей, тот же, что собирается для приложения.
+
+    Хешер берётся из общих средств безопасности (`src/general/security.py`), чтобы тест
+    проверял именно ту конфигурацию Argon2id, с которой работает сервис.
+
+    Returns:
+        PasswordHash: Хешер паролей.
+    """
+    return PASSWORD_HASHER
 
 
 @pytest.fixture
