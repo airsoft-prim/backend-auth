@@ -9,6 +9,9 @@ from src.api import main_router
 from src.core.configs import config
 from src.rotation import get_rotation_daemon
 
+from .exc_handlers import register_exception_handlers
+from .middlewares import register_middlewares
+
 APP_DESCRIPTION: Final[str] = """
 Сервер аутентификации для портала Airsoft-Prim.
 """
@@ -36,5 +39,8 @@ application = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+register_exception_handlers(application)
+register_middlewares(application)
 
 application.include_router(main_router)

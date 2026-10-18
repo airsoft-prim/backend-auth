@@ -1,8 +1,8 @@
-class AuthBackendError(Exception):
+class ApplicationError(Exception):
     """Ошибка работы Auth Backend'a портала Airsoft Prim."""
 
 
-class DomainError(AuthBackendError):
+class DomainError(ApplicationError):
     """Ошибка выполнения бизнес-логики."""
 
 
@@ -10,7 +10,7 @@ class ServiceError(DomainError):
     """Ошибка в работе служб."""
 
 
-class ProviderError(AuthBackendError):
+class ProviderError(ApplicationError):
     """Ошибка выполнения инфраструктурной логики."""
 
 

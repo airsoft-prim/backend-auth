@@ -79,12 +79,7 @@ class User(TimestampedModel):
     last_pswd_change: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     system_role: Mapped[UserRole] = mapped_column(
-        Enum(
-            UserRole,
-            name="user_role",
-            schema="auth",
-            values_callable=UserRole.values,
-        ),
+        Enum(UserRole, name="user_role", schema="auth", values_callable=UserRole.values),
         default=UserRole.USER,
         server_default=UserRole.USER.value,
     )
