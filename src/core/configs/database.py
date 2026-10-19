@@ -54,13 +54,11 @@ class PostgresConfiguration(BaseSettings):
     PSWD: str = Field(default="password")
     NAME: str = Field(default="database")
 
-    DRIVER: str = Field(default="asyncpg")
-
     @property
     def DSN(self) -> PathVariadicPostgresDsn:  # noqa: N802
         """Возвращает провалидированный DSN PostgreSQL."""
         return PathVariadicPostgresDsn.build(
-            scheme=f"postgresql+{self.DRIVER}",
+            scheme="postgresql+asyncpg",
             host=self.HOST,
             port=self.PORT,
             username=self.USER,

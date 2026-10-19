@@ -1,10 +1,13 @@
 from collections.abc import AsyncGenerator, Callable
+from typing import Final
 
 from redis.asyncio import ConnectionPool, Redis
 
 from src.core.configs import config
 
 from ._enums import StorageNumber
+
+MAX_ALIVE_CONNECTIONS: Final[int] = 20
 
 _pools: dict[int, ConnectionPool] = {}
 
@@ -25,7 +28,7 @@ def _get_pool(db: int) -> ConnectionPool:
             host=config.cache.HOST,
             port=config.cache.PORT,
             db=db,
-            max_connections=config.cache.MAX_CONNECTIONS,
+            max_connections=MAX_ALIVE_CONNECTIONS,
             decode_responses=True,
             retry_on_timeout=False,
             socket_connect_timeout=1,

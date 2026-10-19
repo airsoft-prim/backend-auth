@@ -1,7 +1,12 @@
+from typing import Final
+
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import AsyncAdaptedQueuePool
 
 from src.core.configs import Configs, config
+
+MAX_ALIVE_CONNECTIONS: Final[int] = 30
+POOL_SIZE: Final[int] = 10
 
 
 def _create_engine(config: Configs) -> AsyncEngine:
@@ -18,8 +23,8 @@ def _create_engine(config: Configs) -> AsyncEngine:
         poolclass=AsyncAdaptedQueuePool,
         echo=config.app.DEBUG,
         pool_pre_ping=True,
-        pool_size=10,
-        max_overflow=20,
+        pool_size=POOL_SIZE,
+        max_overflow=MAX_ALIVE_CONNECTIONS - POOL_SIZE,
     )
 
 
