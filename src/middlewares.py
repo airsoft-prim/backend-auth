@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+import time
 from typing import Final
 from uuid import uuid7
 
@@ -48,14 +49,31 @@ async def trace_request_middleware(request: Request, call_next: CallNext) -> Res
     return response
 
 
-# TODO: Реализовать
-async def pref_counting_middleware(request: Request, call_next: CallNext) -> Response:
-    raise NotImplementedError
+async def perf_counting_middleware(request: Request, call_next: CallNext) -> Response:
+    """Middleware для подсчёта времени обработки запроса.
+
+    Замеряет длительность обработки запроса и возвращает её клиенту в заголовке
+    ``X-Response-Time`` в миллисекундах. Служебные пути не замеряются, чтобы
+    пробы не искажали метрику собственным оверхедом.
+    """
+    if (route := request.url.path) in EXCLUDED_PATHS:
+        return await call_next(request)
+
+    started_at = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+
+    response.headers["X-Response-Time"] = str(duration_ms)
+
+    log_bind = logger.bind(route=route, method=request.method, duration_ms=duration_ms)
+    log_bind.debug("Request processed.")
+
+    return response
 
 
 _midllewares: Sequence[MiddlewareRecord] = [
     MiddlewareRecord("http", trace_request_middleware),
-    MiddlewareRecord("http", pref_counting_middleware),
+    MiddlewareRecord("http", perf_counting_middleware),
 ]
 
 register_middlewares = MiddlewaresRegistrator(_midllewares)
