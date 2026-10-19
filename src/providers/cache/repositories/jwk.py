@@ -71,8 +71,9 @@ class PublicJWKRepository(RedisRepository):
     async def expire_rotated(self, generated_kid: str, ttl: int) -> None:
         """Назначает время жизни публичным JWK, чьи приватные пары были ротированы.
 
-        Затрагиваются все опубликованные ключи, кроме только что созданного: выданные ранее
-        токены остаются проверяемыми до истечения `ttl`.
+        Затрагиваются все опубликованные ключи, кроме только что созданного, у которых ещё
+        нет TTL: выданные ранее токены остаются проверяемыми до истечения `ttl`, а ключи
+        прошлых ротаций не получают срок заново на каждой ротации.
 
         Args:
             generated_kid (str): Идентификатор (`kid`) нового ключа — его время жизни не
@@ -92,6 +93,7 @@ class PublicJWKRepository(RedisRepository):
 
             async with self.client.pipeline(transaction=False) as pipeline:
                 for key in rotated_keys:
-                    pipeline.expire(key, ttl)
+                    # NX не продлевает TTL ключей, которые уже получили срок на прошлой ротации.
+                    pipeline.expire(key, ttl, nx=True)
 
                 await pipeline.execute()

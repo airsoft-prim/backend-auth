@@ -11,7 +11,9 @@ from tests.doubles import InMemoryRedis
 
 KEY_ID = "nzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs"
 OTHER_KEY_ID = "-EVIID9vcCmyTrTngIAcRqaLT0YXT1eMn0BJEYEHr3c"
+THIRD_KEY_ID = "Lw9H2gE5sVn3qP8xY6bN1cR4tU7mK0jF2dS5aH8zXwE"
 KEY_TTL_SECONDS = 3600
+SHORT_TTL_SECONDS = 60
 
 
 def _jwk(key_id: str) -> JWKDict:
@@ -123,6 +125,32 @@ async def test_expire_rotated_sets_ttl_for_previous_keys_only(
 
     # Тогда
     assert redis_double.ttl == {f"jwk:{KEY_ID}": KEY_TTL_SECONDS}
+
+
+async def test_expire_rotated_keeps_ttl_of_already_rotated_keys(
+    jwk_repository: PublicJWKRepository,
+    redis_double: InMemoryRedis,
+) -> None:
+    """Повторная ротация не продлевает срок ключей прошлых ротаций.
+
+    Given: прошлый ключ уже получил TTL на предыдущей ротации,
+    When: ротация ограничивает время жизни ключей ещё раз,
+    Then: срок уже ограниченного ключа не меняется, а TTL получает только ключ без срока.
+    """
+    # Дано
+    await jwk_repository.store(KEY_ID, _jwk(KEY_ID))
+    await jwk_repository.store(OTHER_KEY_ID, _jwk(OTHER_KEY_ID))
+    await jwk_repository.expire_rotated(OTHER_KEY_ID, SHORT_TTL_SECONDS)
+    await jwk_repository.store(THIRD_KEY_ID, _jwk(THIRD_KEY_ID))
+
+    # Когда
+    await jwk_repository.expire_rotated(THIRD_KEY_ID, KEY_TTL_SECONDS)
+
+    # Тогда
+    assert redis_double.ttl == {
+        f"jwk:{KEY_ID}": SHORT_TTL_SECONDS,
+        f"jwk:{OTHER_KEY_ID}": KEY_TTL_SECONDS,
+    }
 
 
 def test_compile_template_fills_missing_kid_with_glob(

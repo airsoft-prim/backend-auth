@@ -28,7 +28,7 @@ class InMemoryPipeline:
             storage (InMemoryRedis): Подмена Redis, в которую применяются команды.
         """
         self._storage = storage
-        self._scheduled: list[tuple[str, int]] = []
+        self._scheduled: list[tuple[str, int, bool]] = []
 
     async def __aenter__(self) -> Self:
         """Входит в контекст конвейера.
@@ -41,14 +41,16 @@ class InMemoryPipeline:
     async def __aexit__(self, *_: object) -> None:
         """Выходит из контекста конвейера, оставляя команды невыполненными."""
 
-    def expire(self, key: str, ttl: int) -> None:
+    def expire(self, key: str, ttl: int, *, nx: bool = False) -> None:
         """Откладывает назначение времени жизни ключа до `execute`.
 
         Args:
             key (str): Ключ Redis.
             ttl (int): Время жизни ключа в секундах.
+            nx (bool, optional): Назначать срок только ключу без TTL, как `EXPIRE ... NX`.
+                Defaults to False.
         """
-        self._scheduled.append((key, ttl))
+        self._scheduled.append((key, ttl, nx))
 
     async def execute(self) -> list[bool]:
         """Применяет отложенные команды.
@@ -56,10 +58,17 @@ class InMemoryPipeline:
         Returns:
             list[bool]: Результат каждой команды, как у Redis.
         """
-        for key, ttl in self._scheduled:
-            self._storage.ttl[key] = ttl
+        applied: list[bool] = []
 
-        return [True] * len(self._scheduled)
+        for key, ttl, nx in self._scheduled:
+            if nx and key in self._storage.ttl:
+                applied.append(False)
+                continue
+
+            self._storage.ttl[key] = ttl
+            applied.append(True)
+
+        return applied
 
 
 class InMemoryRedis:
