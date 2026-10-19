@@ -2,11 +2,7 @@ from base64 import urlsafe_b64encode
 from collections.abc import Sequence
 from hashlib import sha256
 import json
-import os
-from pathlib import Path
-from typing import Final
 
-import aiofiles
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 from jwt import PyJWK
@@ -16,8 +12,7 @@ from loguru import logger
 
 from src.general.exceptions import ServiceError
 from src.providers.cache.repositories import PublicJWKRepository
-
-_KEY_FILE_PERMISSIONS: Final[int] = 0o600
+from src.providers.filesystem.repositories import PrivateJWKRepository
 
 
 class JWKPublishingService:
@@ -54,18 +49,21 @@ class JWKGenerationService:
     """
 
     KEY_USE: str = "sig"
-    KEY_FILE: str = "private-jwk.pem"
     ALGORITHM: str = "EdDSA"
 
-    def __init__(self, key_store_dir: Path, jwk_repository: PublicJWKRepository) -> None:
+    def __init__(
+        self,
+        private_key_repository: PrivateJWKRepository,
+        public_key_repossitory: PublicJWKRepository,
+    ) -> None:
         """Инициализация класса.
 
         Args:
-            key_store_dir (Path): Директория для хранения сгенерированных ключей.
-            jwk_repository (PublicJWKRepository): Репозиторий для хранения публичных JWK.
+            private_key_repository (PrivateJWKRepository): Репозиторий приватного ключа подписи.
+            public_key_repossitory (PublicJWKRepository): Репозиторий для хранения публичных JWK.
         """
-        self._key_path = key_store_dir / self.KEY_FILE
-        self._cache = jwk_repository
+        self._private_key = private_key_repository
+        self._publick_key = public_key_repossitory
 
     async def generate_jwk(self, rotated_ttl: int, *, overwrite: bool = False) -> PyJWK:
         """Генерирует приватный JWK.
@@ -79,13 +77,13 @@ class JWKGenerationService:
             overwrite (bool, optional): Флаг перезаписи ключа, если он уже существует.
                 Defaults to False.
         """
-        if self._key_path.exists(follow_symlinks=True) and not overwrite:
+        if (pem := None if overwrite else await self._private_key.acquire()) is not None:
             logger.info("Key file already exists. Generation will be skipped.")
 
-            private_jwk = await self._read_from_file(self._key_path)
+            private_jwk = self._deserialize_private_jwk(pem)
             public_jwk = self._get_public_jwk(private_jwk)
 
-            if await self._cache.acquire(self._get_key_id(public_jwk)) is not None:
+            if await self._publick_key.acquire(self._get_key_id(public_jwk)) is not None:
                 logger.info("Public JWK already published.")
                 return public_jwk
 
@@ -93,13 +91,13 @@ class JWKGenerationService:
             private_jwk = self._generate_private_jwk()
             public_jwk = self._get_public_jwk(private_jwk)
 
-            await self._write_into_file(self._key_path, private_jwk)
+            await self._private_key.store(self._serialize_private_jwk(private_jwk))
             logger.success("Private JWK generated.")
 
         kid = self._get_key_id(public_jwk)
 
-        await self._cache.store(kid, self._get_jwk_dict(public_jwk.key))
-        await self._cache.expire_rotated(kid, rotated_ttl)
+        await self._publick_key.store(kid, self._get_jwk_dict(public_jwk.key))
+        await self._publick_key.expire_rotated(kid, rotated_ttl)
         logger.success("Public JWK published.")
 
         return public_jwk
@@ -145,24 +143,18 @@ class JWKGenerationService:
 
         return jwk
 
-    # TODO: Вынести чтение и запись приватного ключа в `PrivateJWKRepository`
-    # поверх провайдера FileSystem: доступ к pem-файлу нужен нескольким сервисам,
-    # поэтому работа с файлом здесь — временное решение.
-    async def _read_from_file(self, path: Path) -> PyJWK:
-        """Читает приватный JWK из PEM-файла.
+    def _deserialize_private_jwk(self, pem: bytes) -> PyJWK:
+        """Читает приватный JWK из PEM.
 
         Args:
-            path (Path): Путь к файлу с приватным ключом.
+            pem (bytes): Приватный ключ в PEM.
 
         Returns:
             PyJWK: Приватный ключ из файла.
 
         Raises:
-            ServiceError: Если файл содержит ключ не на кривой Ed25519.
+            ServiceError: Если ключ не на кривой Ed25519.
         """
-        async with aiofiles.open(path, "rb") as file:
-            pem = await file.read()
-
         private_key = serialization.load_pem_private_key(pem, password=None)
 
         if not isinstance(private_key, Ed25519PrivateKey):
@@ -171,28 +163,21 @@ class JWKGenerationService:
 
         return PyJWK.from_dict(self._get_jwk_dict(private_key))
 
-    async def _write_into_file(self, path: Path, jwk: PyJWK) -> None:
-        """Записывает приватный JWK в PEM-файл.
+    def _serialize_private_jwk(self, jwk: PyJWK) -> bytes:
+        """Сериализует приватный JWK в PEM (PKCS8).
 
         Args:
-            path (Path): Путь к файлу с приватным ключом.
             jwk (PyJWK): Приватный JWK для записи.
+
+        Returns:
+            bytes: Приватный ключ в PEM.
         """
         private_key: Ed25519PrivateKey = jwk.key
-        pem = private_key.private_bytes(
+        return private_key.private_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PrivateFormat.PKCS8,
             encryption_algorithm=serialization.NoEncryption(),
         )
-
-        path.parent.mkdir(parents=True, exist_ok=True)
-
-        def _descriptor(path: str, flags: int) -> int:
-            """Возвращает дескриптор для открытия файла."""
-            return os.open(path, flags, _KEY_FILE_PERMISSIONS)
-
-        async with aiofiles.open(path, "wb", opener=_descriptor) as file:
-            await file.write(pem)
 
     @staticmethod
     def _generate_key_id(jwk: JWKDict) -> str:

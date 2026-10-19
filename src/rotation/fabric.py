@@ -1,6 +1,8 @@
 from src.core.configs import config
 from src.providers.cache import StorageNumber, create_client
 from src.providers.cache.repositories import PublicJWKRepository
+from src.providers.filesystem import FileSystem
+from src.providers.filesystem.repositories import PrivateJWKRepository
 from src.services.jwk import JWKGenerationService
 
 from .daemon import JWKRotationDaemon
@@ -13,7 +15,8 @@ def get_rotation_daemon() -> JWKRotationDaemon:
         JWKRotationDaemon: Готовый к запуску демон ротации.
     """
     repository = PublicJWKRepository(create_client(StorageNumber.KEYS.value))
-    jwk_service = JWKGenerationService(config.security.KEY_STORE_DIRECTORY, repository)
+    key_repository = PrivateJWKRepository(FileSystem(config.security.KEY_STORE_DIRECTORY))
+    jwk_service = JWKGenerationService(key_repository, repository)
 
     return JWKRotationDaemon(
         jwk_service,

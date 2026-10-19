@@ -6,6 +6,7 @@ from typing import cast
 
 import pytest
 
+from src.providers.filesystem.repositories import PrivateJWKRepository
 from src.rotation.daemon import JWKRotationDaemon
 from src.services.jwk import JWKGenerationService
 from tests.doubles import InMemoryRedis
@@ -44,7 +45,7 @@ async def test_daemon_rotates_key_immediately_on_start(
 
     # Тогда
     assert delays[0] == 0
-    assert (key_store_dir / JWKGenerationService.KEY_FILE).exists()
+    assert (key_store_dir / PrivateJWKRepository.FILE_NAME).exists()
     assert len(redis_double.values) == 1
 
 
@@ -62,7 +63,7 @@ async def test_daemon_overwrites_key_and_expires_previous_public_key(
     жизни, равное интервалу расписания, — выданные ранее токены ещё проверяемы.
     """
     # Дано
-    key_file = key_store_dir / JWKGenerationService.KEY_FILE
+    key_file = key_store_dir / PrivateJWKRepository.FILE_NAME
     previous = await jwk_service.generate_jwk(DAY_IN_SECONDS)
     previous_key_file = key_file.read_bytes()
 
@@ -109,5 +110,5 @@ async def test_daemon_takes_running_loop_when_loop_is_not_given(
     with pytest.raises(RotationInterruptedError, match="Rotation loop interrupted"):
         await event_loop.scheduled[0]
 
-    assert (key_store_dir / JWKGenerationService.KEY_FILE).exists()
+    assert (key_store_dir / PrivateJWKRepository.FILE_NAME).exists()
     assert len(redis_double.values) == 1

@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 import jwt
 import pytest
 
-from src.services.jwk import JWKGenerationService
+from src.providers.filesystem.repositories import PrivateJWKRepository
 
 __all__ = ["TokenSigner", "sign_access_token"]
 
@@ -34,7 +34,7 @@ def sign_access_token(key_store_dir: Path) -> TokenSigner:
     """
 
     def _sign(claims: dict[str, Any], key_id: str) -> str:
-        key_file = key_store_dir / JWKGenerationService.KEY_FILE
+        key_file = key_store_dir / PrivateJWKRepository.FILE_NAME
         private_key = serialization.load_pem_private_key(key_file.read_bytes(), password=None)
 
         if not isinstance(private_key, Ed25519PrivateKey):

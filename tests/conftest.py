@@ -15,6 +15,8 @@ from src.api.well_known.deps import get_jwk_publishing_service
 from src.app import application
 from src.general.security import PASSWORD_HASHER
 from src.providers.cache.repositories import PublicJWKRepository
+from src.providers.filesystem import FileSystem
+from src.providers.filesystem.repositories import PrivateJWKRepository
 from src.services.jwk import JWKGenerationService, JWKPublishingService
 from tests.asgi_client import ASGIClient
 from tests.doubles import InMemoryRedis, as_redis
@@ -22,11 +24,13 @@ from tests.doubles import InMemoryRedis, as_redis
 __all__ = [
     "api_app",
     "api_client",
+    "file_system",
     "jwk_repository",
     "jwk_service",
     "jwks_client",
     "key_store_dir",
     "password_hash",
+    "private_jwk_repository",
     "publishing_service",
     "redis_double",
     "unavailable_repository",
@@ -117,17 +121,46 @@ def key_store_dir(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def jwk_service(key_store_dir: Path, jwk_repository: PublicJWKRepository) -> JWKGenerationService:
+def file_system(key_store_dir: Path) -> FileSystem:
+    """Отдаёт объект файловой системы в каталоге ключа подписи.
+
+    Args:
+        key_store_dir (Path): Каталог ключа подписи; создаётся при первой записи.
+
+    Returns:
+        FileSystem: Объект доступа к файловой системе.
+    """
+    return FileSystem(key_store_dir)
+
+
+@pytest.fixture
+def private_jwk_repository(file_system: FileSystem) -> PrivateJWKRepository:
+    """Отдаёт репозиторий приватного ключа поверх файловой системы.
+
+    Args:
+        file_system (FileSystem): Объект доступа к файловой системе.
+
+    Returns:
+        PrivateJWKRepository: Репозиторий приватного ключа подписи.
+    """
+    return PrivateJWKRepository(file_system)
+
+
+@pytest.fixture
+def jwk_service(
+    private_jwk_repository: PrivateJWKRepository,
+    jwk_repository: PublicJWKRepository,
+) -> JWKGenerationService:
     """Отдаёт сервис генерации JWK поверх подмены Redis.
 
     Args:
-        key_store_dir (Path): Каталог приватного ключа.
+        private_jwk_repository (PrivateJWKRepository): Репозиторий приватного ключа.
         jwk_repository (PublicJWKRepository): Репозиторий публичных ключей.
 
     Returns:
         JWKGenerationService: Сервис генерации ключей.
     """
-    return JWKGenerationService(key_store_dir, jwk_repository)
+    return JWKGenerationService(private_jwk_repository, jwk_repository)
 
 
 @pytest.fixture

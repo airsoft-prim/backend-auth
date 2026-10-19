@@ -7,6 +7,8 @@ import pytest
 from redis.asyncio import Redis
 
 from src.providers.cache.repositories import PublicJWKRepository
+from src.providers.filesystem import FileSystem
+from src.providers.filesystem.repositories import PrivateJWKRepository
 from src.services.jwk import JWKGenerationService
 from tests.asgi_client import ASGIClient
 
@@ -16,6 +18,22 @@ SHORT_TTL_SECONDS = 60
 MILLISECONDS_PER_SECOND = 1000
 
 pytestmark = pytest.mark.integration
+
+
+def _service(key_store_dir: Path, redis_client: Redis) -> JWKGenerationService:
+    """Собирает сервис генерации ключей поверх настоящего Redis.
+
+    Args:
+        key_store_dir (Path): Каталог приватного ключа подписи.
+        redis_client (Redis): Клиент Redis.
+
+    Returns:
+        JWKGenerationService: Сервис генерации и публикации ключей.
+    """
+    return JWKGenerationService(
+        PrivateJWKRepository(FileSystem(key_store_dir)),
+        PublicJWKRepository(redis_client),
+    )
 
 
 async def test_jwks_endpoint_serves_key_published_in_redis(
@@ -30,7 +48,7 @@ async def test_jwks_endpoint_serves_key_published_in_redis(
     Then: эндпоинт отдаёт этот ключ без приватной части.
     """
     # Дано
-    service = JWKGenerationService(key_store_dir, PublicJWKRepository(redis_client))
+    service = _service(key_store_dir, redis_client)
     published = await service.generate_jwk(KEY_TTL_SECONDS)
 
     # Когда
@@ -61,7 +79,7 @@ async def test_rotated_key_gets_time_to_live(
     Then: прошлый публичный ключ остаётся в Redis, но ограничен временем жизни.
     """
     # Дано
-    service = JWKGenerationService(key_store_dir, PublicJWKRepository(redis_client))
+    service = _service(key_store_dir, redis_client)
     previous = await service.generate_jwk(KEY_TTL_SECONDS)
     previous_name = f"jwk:{previous.key_id}"
     created = [previous_name]
@@ -93,7 +111,7 @@ async def test_repeated_rotation_keeps_ttl_of_older_key(
     Then: срок этого ключа не сбрасывается на новый TTL.
     """
     # Дано
-    service = JWKGenerationService(key_store_dir, PublicJWKRepository(redis_client))
+    service = _service(key_store_dir, redis_client)
     older = await service.generate_jwk(KEY_TTL_SECONDS)
     older_name = f"jwk:{older.key_id}"
     created = [older_name]
