@@ -1,0 +1,94 @@
+name: airsoft-prim-auth
+
+
+x-build-configuration: &build-configuration
+    context: .
+    dockerfile: Dockerfile
+
+x-postgres-configuration: &postgres-configuration
+    image: postgres:18.6-alpine
+    restart: unless-stopped
+    environment:
+        POSTGRES_USER: "username"
+        POSTGRES_PASSWORD: "password"
+        POSTGRES_DB: "database"
+    networks:
+        - auth
+    healthcheck:
+        test: ["CMD-SHELL", "pg_isready -U username -d database"]
+        interval: 30s
+        timeout: 90s
+        retries: 5
+        start_period: 30s
+
+x-redis-configuration: &redis-configuration
+    image: redis:8-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    networks:
+      - auth
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+
+services:
+  postgres:
+    <<: *postgres-configuration
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    profiles: ["dev", "deploy"]
+
+  redis:
+    <<: *redis-configuration
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    profiles: ["dev", "deploy"]
+
+
+  app:
+    build:
+      <<: *build-configuration
+      target: deploy
+    image: airsoft-prim-auth:latest
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    networks:
+      - auth
+    volumes:
+      - signing-keys:/var/lib/app/keys
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "--max-time", "2", "http://127.0.0.1:8000/health/liveness"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    profiles: ["deploy"]
+
+networks:
+  auth:
+    name: airsoft-prim-auth
+    driver: bridge
+
+volumes:
+  postgres-data:
+    name: airsoft-prim-auth-postgres-data
+    driver: local
+  redis-data:
+    name: airsoft-prim-auth-redis-data
+    driver: local
+  signing-keys:
+    name: airsoft-prim-auth-signing-keys
+    driver: local
