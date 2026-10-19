@@ -1,7 +1,6 @@
 {
   "ruff.configuration": "${workspaceFolder}/ruff.toml",
   "ruff.configurationPreference": "filesystemFirst",
-  "ruff.nativeServer": "on",
   "ruff.importStrategy": "fromEnvironment",
   "ruff.path": ["${workspaceFolder}/.venv/bin/ruff", "${workspaceFolder}/.venv/Scripts/ruff.exe"],
 
@@ -36,8 +35,6 @@
     "**/.ruff_cache": true,
     "**/.pytest_cache": true
   },
-
-  "markdownlint.config": { "MD013": false },
 
   "cSpell.language": "en,ru",
   "cSpell.words": ["airsoft", "uvicorn", "asyncpg", "pydantic", "pwdlib", "pyjwt", "loguru", "jwks"]
