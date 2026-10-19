@@ -1,0 +1,81 @@
+default_stages: [pre-commit]
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
+default_language_version:
+  python: python3.13
+
+# Метки файлов и каталогов.
+x-aliases:
+  - &python_tests_exclude ^(tests|scripts)/
+  - &uv_lock_files ^(pyproject\.toml|uv\.lock)$
+  - &helm_files ^(.helm)/
+
+repos:
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args: ["--verbose"]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=10240"]
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: mixed-line-ending
+        args: ["--fix=no"]
+      - id: check-ast
+      - id: check-json
+      - id: check-toml
+      - id: check-yaml
+        exclude: *helm_files
+        args: ["--allow-multiple-documents"]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.9
+    hooks:
+      - id: ruff-check
+        types_or: [python, pyi]
+      - id: ruff-format
+        args: ["--check"]
+        types_or: [python, pyi]
+
+  - repo: https://github.com/astral-sh/ty-pre-commit
+    rev: v0.0.84
+    hooks:
+      - id: ty
+        entry: ty check --quiet
+        language: system
+        pass_filenames: true
+        always_run: false
+        types_or: [python, pyi]
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.9.4
+    hooks:
+      - id: bandit
+        args: ["-q"]
+        exclude: *python_tests_exclude
+
+  - repo: https://github.com/executablebooks/mdformat
+    rev: 1.0.0
+    hooks:
+      - id: mdformat
+        name: markdown lint
+        args: ["--check", "--wrap", "keep"]
+        types: [markdown]
+        exclude: ^(AGENTS\.md|\.agents/.*)$
+        additional_dependencies: ["mdformat==1.0.0", "mdformat-gfm==1.0.0"]
+
+  - repo: local
+    hooks:
+      - id: uv-lock
+        name: uv.lock sync'ed with pyproject.toml
+        entry: uv lock --check
+        language: system 
+        files: *uv_lock_files
+        require_serial: true
+        verbose: true
+        pass_filenames: false
