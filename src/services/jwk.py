@@ -1,16 +1,13 @@
-from base64 import urlsafe_b64encode
 from collections.abc import Sequence
-from hashlib import sha256
-import json
 
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from jwt import PyJWK
-from jwt.algorithms import get_default_algorithms
 from jwt.types import JWKDict
 from loguru import logger
 
 from src.general.exceptions import ServiceError
+from src.general.security import key_to_jwk
 from src.providers.cache.repositories import PublicJWKRepository
 from src.providers.filesystem.repositories import PrivateJWKRepository
 
@@ -48,9 +45,6 @@ class JWKGenerationService:
     Сервис работает исключительно с ключами алгоритма EdDSA на кривой Ed25519.
     """
 
-    KEY_USE: str = "sig"
-    ALGORITHM: str = "EdDSA"
-
     def __init__(
         self,
         private_key_repository: PrivateJWKRepository,
@@ -81,22 +75,22 @@ class JWKGenerationService:
             logger.info("Key file already exists. Generation will be skipped.")
 
             private_jwk = self._deserialize_private_jwk(pem)
-            public_jwk = self._get_public_jwk(private_jwk)
+            public_jwk = self._generate_public_jwk(private_jwk)
 
-            if await self._publick_key.acquire(self._get_key_id(public_jwk)) is not None:
+            if await self._publick_key.acquire(self._get_jwk_id(public_jwk)) is not None:
                 logger.info("Public JWK already published.")
                 return public_jwk
 
         else:
             private_jwk = self._generate_private_jwk()
-            public_jwk = self._get_public_jwk(private_jwk)
+            public_jwk = self._generate_public_jwk(private_jwk)
 
             await self._private_key.store(self._serialize_private_jwk(private_jwk))
             logger.success("Private JWK generated.")
 
-        kid = self._get_key_id(public_jwk)
+        kid = self._get_jwk_id(public_jwk)
 
-        await self._publick_key.store(kid, self._get_jwk_dict(public_jwk.key))
+        await self._publick_key.store(kid, key_to_jwk(public_jwk.key))
         await self._publick_key.expire_rotated(kid, rotated_ttl)
         logger.success("Public JWK published.")
 
@@ -108,11 +102,11 @@ class JWKGenerationService:
         Returns:
             PyJWK: Приватная часть JWK.
         """
-        jwk_dict = self._get_jwk_dict(Ed25519PrivateKey.generate())
+        jwk_dict = key_to_jwk(Ed25519PrivateKey.generate())
         return PyJWK.from_dict(obj=jwk_dict)
 
-    def _get_public_jwk(self, private_jwk: PyJWK) -> PyJWK:
-        """Собирает публичный JWK из приватного.
+    def _generate_public_jwk(self, private_jwk: PyJWK) -> PyJWK:
+        """Генерирует публичный JWK из приватного.
 
         Args:
             private_jwk (PyJWK): Приватный JWK.
@@ -120,28 +114,8 @@ class JWKGenerationService:
         Returns:
             PyJWK: Публичная часть JWK, пригодная для публикации.
         """
-        jwk_dict = self._get_jwk_dict(private_jwk.key.public_key())
+        jwk_dict = key_to_jwk(private_jwk.key.public_key())
         return PyJWK.from_dict(obj=jwk_dict)
-
-    def _get_jwk_dict(self, key: Ed25519PrivateKey | Ed25519PublicKey) -> JWKDict:
-        """Сериализует ключ Ed25519 в JWK по RFC 8037.
-
-        Args:
-            key (Ed25519PrivateKey | Ed25519PublicKey): Ключ для сериализации. Приватный
-                ключ даёт JWK с параметром `d`, публичный — только публичную часть.
-
-        Returns:
-            JWKDict: JWK с `alg`, `use` и посчитанным `kid`.
-        """
-        encryption_algorithm = get_default_algorithms()[self.ALGORITHM]
-        jwk: JWKDict = encryption_algorithm.to_jwk(key, as_dict=True)
-
-        jwk["kid"] = self._generate_key_id(jwk)
-
-        jwk["alg"] = self.ALGORITHM
-        jwk["use"] = self.KEY_USE
-
-        return jwk
 
     def _deserialize_private_jwk(self, pem: bytes) -> PyJWK:
         """Читает приватный JWK из PEM.
@@ -161,7 +135,7 @@ class JWKGenerationService:
             msg = "Private key file does not contain an Ed25519 key."
             raise ServiceError(msg) from None
 
-        return PyJWK.from_dict(self._get_jwk_dict(private_key))
+        return PyJWK.from_dict(key_to_jwk(private_key))
 
     def _serialize_private_jwk(self, jwk: PyJWK) -> bytes:
         """Сериализует приватный JWK в PEM (PKCS8).
@@ -180,27 +154,7 @@ class JWKGenerationService:
         )
 
     @staticmethod
-    def _generate_key_id(jwk: JWKDict) -> str:
-        """Считает отпечаток ключа по RFC 7638, который и будет являться ID ключа.
-
-        Отпечаток детерминирован, поэтому `kid` одного и того же ключа не меняется между
-        запусками сервиса, и опубликованный ключ всегда находится в кеше по своему `kid`.
-
-        Args:
-            jwk (JWKDict): Словарь данных JWK.
-
-        Returns:
-            str: Отпечаток ключа.
-        """
-        payload = {"crv": jwk["crv"], "kty": jwk["kty"], "x": jwk["x"]}
-        thumbprint = json.dumps(payload, separators=(",", ":"), sort_keys=True)
-
-        thumbprint_hash = sha256(thumbprint.encode()).digest()
-
-        return urlsafe_b64encode(thumbprint_hash).rstrip(b"=").decode()
-
-    @staticmethod
-    def _get_key_id(jwk: PyJWK) -> str:
+    def _get_jwk_id(jwk: PyJWK) -> str:
         """Возвращает `kid` ключа — им ключ адресуется в кеше.
 
         Args:
