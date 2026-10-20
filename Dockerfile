@@ -14,7 +14,7 @@ RUN uv sync --frozen --no-dev --no-group test --python /usr/local/bin/python3.14
 COPY main.py ./
 COPY src ./src
 
-FROM python:3.14-slim-bookworm AS deploy
+FROM python:3.14-slim AS deploy
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
