@@ -1,11 +1,26 @@
-"""Фикстуры слоя unit: подмена планировщика демона ротации."""
+"""Фикстуры слоя unit: подмена планировщика ротации и подпись токенов для проверки."""
 
-from collections.abc import Coroutine
+from collections.abc import Callable, Coroutine
+from pathlib import Path
 from typing import Any
 
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+import jwt
 import pytest
 
-__all__ = ["RecordingEventLoop", "RotationInterruptedError", "patch_daemon_sleep"]
+from src.general.security import SIGNING_ALGORITHM
+from src.providers.filesystem.repositories import PrivateJWKRepository
+
+__all__ = [
+    "RawTokenSigner",
+    "RecordingEventLoop",
+    "RotationInterruptedError",
+    "patch_daemon_sleep",
+    "raw_token_signer",
+]
+
+type RawTokenSigner = Callable[[dict[str, Any], str | None], str]
 
 
 class RotationInterruptedError(Exception):
@@ -65,3 +80,33 @@ def patch_daemon_sleep(monkeypatch: pytest.MonkeyPatch, *, rotations: int) -> li
     monkeypatch.setattr("src.rotation.daemon.asyncio.sleep", _sleep)
 
     return delays
+
+
+@pytest.fixture
+def raw_token_signer(key_store_dir: Path) -> RawTokenSigner:
+    """Отдаёт функцию подписи токена приватным ключом сервиса.
+
+    Нужна там, где проверяющий сервис должен получить токен с неверными или
+    неполными claims: обычный сервис выпуска всегда собирает корректный набор.
+
+    Args:
+        key_store_dir (Path): Каталог приватного ключа подписи.
+
+    Returns:
+        RawTokenSigner: Функция «claims, kid → подписанный токен»; `kid=None`
+            оставляет заголовок без идентификатора ключа.
+    """
+
+    def _sign(claims: dict[str, Any], key_id: str | None) -> str:
+        key_file = key_store_dir / PrivateJWKRepository.FILE_NAME
+        private_key = serialization.load_pem_private_key(key_file.read_bytes(), password=None)
+
+        if not isinstance(private_key, Ed25519PrivateKey):
+            msg = "Key store holds a key that is not Ed25519."
+            raise TypeError(msg)
+
+        headers = {} if key_id is None else {"kid": key_id}
+
+        return jwt.encode(claims, private_key, algorithm=SIGNING_ALGORITHM, headers=headers)
+
+    return _sign

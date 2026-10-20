@@ -18,12 +18,15 @@ from src.providers.cache.repositories import PublicJWKRepository
 from src.providers.filesystem import FileSystem
 from src.providers.filesystem.repositories import PrivateJWKRepository
 from src.services.jwk import JWKGenerationService, JWKPublishingService
+from src.services.jwt import JWTDecryptionService, JWTEncryptionService
 from tests.asgi_client import ASGIClient
 from tests.doubles import InMemoryRedis, as_redis
 
 __all__ = [
     "api_app",
     "api_client",
+    "decryption_service",
+    "encryption_service",
     "file_system",
     "jwk_repository",
     "jwk_service",
@@ -174,6 +177,34 @@ def publishing_service(jwk_repository: PublicJWKRepository) -> JWKPublishingServ
         JWKPublishingService: Сервис публикации ключей.
     """
     return JWKPublishingService(jwk_repository=jwk_repository)
+
+
+@pytest.fixture
+def encryption_service(
+    private_jwk_repository: PrivateJWKRepository,
+) -> JWTEncryptionService:
+    """Отдаёт сервис выпуска токенов поверх keyfile.
+
+    Args:
+        private_jwk_repository (PrivateJWKRepository): Репозиторий приватного ключа.
+
+    Returns:
+        JWTEncryptionService: Сервис подписи access-токенов.
+    """
+    return JWTEncryptionService(private_key_repository=private_jwk_repository)
+
+
+@pytest.fixture
+def decryption_service(jwk_repository: PublicJWKRepository) -> JWTDecryptionService:
+    """Отдаёт сервис проверки токенов поверх подмены Redis.
+
+    Args:
+        jwk_repository (PublicJWKRepository): Репозиторий публичных ключей.
+
+    Returns:
+        JWTDecryptionService: Сервис проверки access-токенов.
+    """
+    return JWTDecryptionService(public_key_repository=jwk_repository)
 
 
 @pytest.fixture

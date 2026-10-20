@@ -2,9 +2,10 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Body, Depends, Response
 
+from src.services import JWTEncryptionService
 from src.services.user import UserService
 
-from .deps import get_user_service
+from .deps import get_encryption_service, get_user_service
 from .docs import LOGIN_DOCS, LOGOUT_DOCS, REGISTER_DOCS
 from .schemas import AccessToken, LoginRequestBody, RegisterRequestBody
 
@@ -31,7 +32,11 @@ async def register_user(
 
 
 @router.post("/login", **LOGIN_DOCS)
-async def login_user(body: LoginRequestBody) -> AccessToken:
+async def login_user(
+    body: Annotated[LoginRequestBody, Body(...)],
+    user_service: Annotated[UserService, Depends(get_user_service)],
+    token_service: Annotated[JWTEncryptionService, Depends(get_encryption_service)],
+) -> AccessToken:
     """Функция входа в систему.
 
     Args:
@@ -40,7 +45,10 @@ async def login_user(body: LoginRequestBody) -> AccessToken:
     Returns:
         AccessToken: Данные сессии, включая токен доступа и его параметры.
     """
-    raise NotImplementedError
+    subject, role = await user_service.login(body.username, body.password.get_secret_value())
+    access_token, expires_in = await token_service.encrypt(subject, role)
+
+    return AccessToken(access_token=access_token, expires_in=expires_in)
 
 
 @router.post("/logout", **LOGOUT_DOCS)

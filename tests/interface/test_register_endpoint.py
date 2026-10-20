@@ -110,7 +110,7 @@ async def test_register_rejects_body_that_breaks_the_policy(
     "message",
     ["Username is already taken.", "Email is already taken."],
 )
-async def test_register_fails_with_server_error_when_credentials_are_taken(
+async def test_register_fails_with_conflict_when_credentials_are_taken(
     register_client_factory: RegisterClientFactory,
     message: str,
 ) -> None:
@@ -118,8 +118,7 @@ async def test_register_fails_with_server_error_when_credentials_are_taken(
 
     Given: логин или адрес уже зарегистрированы,
     When: гость регистрируется с теми же данными,
-    Then: приходит 500: доменная ошибка сервиса пока не превращается в 409
-    (`docs/API_AUTH.md` §4.1).
+    Then: приходит 409 с причиной из сервиса (`docs/API_AUTH.md` §4.1).
     """
     # Дано
     service = StubUserService(error=UserAlreadyExistsError(message))
@@ -129,7 +128,8 @@ async def test_register_fails_with_server_error_when_credentials_are_taken(
     response = await client.post(REGISTER_PATH, payload=_body())
 
     # Тогда
-    assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert response.payload == {"message": "User already exists", "details": message}
 
 
 async def test_register_fails_with_server_error_when_database_is_unavailable(

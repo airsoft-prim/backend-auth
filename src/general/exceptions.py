@@ -10,6 +10,10 @@ class ServiceError(DomainError):
     """Ошибка в работе служб."""
 
 
+class SecurityError(DomainError):
+    """Ошибка безопасности."""
+
+
 class ProviderError(ApplicationError):
     """Ошибка выполнения инфраструктурной логики."""
 

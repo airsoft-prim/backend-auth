@@ -71,7 +71,7 @@ class AccessToken(BaseModel):
     access_token: str = Field(description="JWT токен доступа.")
     token_type: Literal["Bearer"] = Field(default="Bearer", description="Тип токена")
 
-    expires_in: int = Field(description="Временная метка инвалидации токена.")
+    expires_in: int = Field(description="Срок жизни токена в секундах.")
 
 
 class UserData(BaseModel):
