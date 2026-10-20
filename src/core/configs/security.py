@@ -1,3 +1,4 @@
+from datetime import timedelta
 from pathlib import Path
 
 from pydantic import Field
@@ -12,3 +13,5 @@ class SecurityConfiguration(BaseSettings):
     KEY_ROTATION_RULE: str = Field(default="0 3 1 * *")
     KEY_OVERWRITE_ON_RESTART: bool = Field(default=False)
     KEY_STORE_DIRECTORY: Path = Field(default=Path("/var/lib/app/keys"))
+
+    ACCESS_TOKEN_TTL: int = Field(default=int(timedelta(hours=24).total_seconds()), gt=0)

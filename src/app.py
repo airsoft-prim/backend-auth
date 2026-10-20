@@ -34,9 +34,9 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
 
 
 application = FastAPI(
-    title=config.app.NAME,
+    title=f"{config.app.PROJECT} | {config.app.NAME}",
     description=APP_DESCRIPTION,
-    version="1.0.0",
+    version="0.1.0",
     lifespan=lifespan,
 )
 

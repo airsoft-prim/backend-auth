@@ -7,5 +7,7 @@ class ApplicationConfiguration(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="APP_")
 
-    NAME: str = Field(default="Airsoft-Prim | Auth Server")
+    NAME: str = Field(default="Auth Server")
+    PROJECT: str = Field(default="Airsoft Prim")
+
     DEBUG: bool = Field(default=False)
