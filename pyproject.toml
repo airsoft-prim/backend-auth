@@ -37,6 +37,7 @@ migrations = [
     "alembic>=1.20.0",
 ]
 dev = [
+    "bandit>=1.9.4",
     "mdformat>=1.0.0",
     "mdformat-gfm>=1.0.0",
     "pre-commit>=4.7.0",
