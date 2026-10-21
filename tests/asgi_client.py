@@ -48,35 +48,52 @@ class ASGIClient:
         """
         self._app = app
 
-    async def get(self, path: str) -> ASGIResponse:
+    async def get(
+        self,
+        path: str,
+        *,
+        headers: Mapping[str, str] | None = None,
+    ) -> ASGIResponse:
         """Запрашивает путь методом GET.
 
         Args:
             path (str): Путь запроса.
+            headers (Mapping[str, str] | None, optional): Дополнительные заголовки
+                запроса. Defaults to None.
 
         Returns:
             ASGIResponse: Ответ приложения.
         """
-        return await self.request("GET", path)
+        return await self.request("GET", path, headers=headers)
 
-    async def post(self, path: str, payload: Any | None = None) -> ASGIResponse:
+    async def post(
+        self,
+        path: str,
+        payload: Any | None = None,
+        *,
+        headers: Mapping[str, str] | None = None,
+    ) -> ASGIResponse:
         """Запрашивает путь методом POST.
 
         Args:
             path (str): Путь запроса.
             payload (Any | None, optional): Тело запроса: данные, сериализуемые в JSON.
                 None — запрос без тела. Defaults to None.
+            headers (Mapping[str, str] | None, optional): Дополнительные заголовки
+                запроса. Defaults to None.
 
         Returns:
             ASGIResponse: Ответ приложения.
         """
-        return await self.request("POST", path, payload=payload)
+        return await self.request("POST", path, payload=payload, headers=headers)
 
     async def request(
         self,
         method: str,
         path: str,
         payload: Any | None = None,
+        *,
+        headers: Mapping[str, str] | None = None,
     ) -> ASGIResponse:
         """Отправляет запрос в приложение.
 
@@ -85,16 +102,23 @@ class ASGIClient:
             path (str): Путь запроса.
             payload (Any | None, optional): Тело запроса: данные, сериализуемые в JSON.
                 None — запрос без тела. Defaults to None.
+            headers (Mapping[str, str] | None, optional): Дополнительные заголовки
+                запроса. Defaults to None.
 
         Returns:
             ASGIResponse: Ответ приложения.
         """
         messages: list[ASGIMessage] = []
         body = b"" if payload is None else json.dumps(payload).encode()
-        headers = [(b"host", b"testserver")]
+        request_headers = [(b"host", b"testserver")]
 
         if payload is not None:
-            headers.append((b"content-type", b"application/json"))
+            request_headers.append((b"content-type", b"application/json"))
+
+        if headers is not None:
+            request_headers.extend(
+                (key.lower().encode(), value.encode()) for key, value in headers.items()
+            )
 
         async def receive() -> ASGIMessage:
             return {"type": "http.request", "body": body, "more_body": False}
@@ -112,7 +136,7 @@ class ASGIClient:
             "query_string": b"",
             "root_path": "",
             "scheme": "http",
-            "headers": headers,
+            "headers": request_headers,
             "server": ("testserver", 80),
             "client": ("testclient", 50000),
         }

@@ -56,6 +56,26 @@ class UserService:
 
         await self._users.save(user)
 
+    async def get_account(self, user_id: int) -> User:
+        """Возвращает учётную запись по её идентификатору.
+
+        Args:
+            user_id (int): Идентификатор учётной записи.
+
+        Raises:
+            UserIdentificationError: Учётная запись не найдена.
+
+        Returns:
+            User: Найденная учётная запись.
+        """
+        user = await self._users.get(user_id)
+
+        if user is None:
+            msg = "User not found."
+            raise UserIdentificationError(msg) from None
+
+        return user
+
     async def login(self, username: str, password: str) -> tuple[int, str]:
         """Выполняет вход пользователя в систему.
 

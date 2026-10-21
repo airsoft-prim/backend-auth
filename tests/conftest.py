@@ -14,7 +14,7 @@ import pytest
 from src.api.well_known.deps import get_jwk_publishing_service
 from src.app import application
 from src.general.security import PASSWORD_HASHER
-from src.providers.cache.repositories import PublicJWKRepository
+from src.providers.cache.repositories import PublicJWKRepository, RevokedTokensRepository
 from src.providers.filesystem import FileSystem
 from src.providers.filesystem.repositories import PrivateJWKRepository
 from src.services.jwk import JWKGenerationService, JWKPublishingService
@@ -25,6 +25,7 @@ from tests.doubles import InMemoryRedis, as_redis
 __all__ = [
     "api_app",
     "api_client",
+    "blacklisted_tokens_repository",
     "decryption_service",
     "encryption_service",
     "file_system",
@@ -98,6 +99,19 @@ def jwk_repository(redis_double: InMemoryRedis) -> PublicJWKRepository:
         PublicJWKRepository: Репозиторий публичных ключей.
     """
     return PublicJWKRepository(as_redis(redis_double))
+
+
+@pytest.fixture
+def blacklisted_tokens_repository(redis_double: InMemoryRedis) -> RevokedTokensRepository:
+    """Отдаёт репозиторий отозванных токенов поверх подмены Redis.
+
+    Args:
+        redis_double (InMemoryRedis): Подмена Redis.
+
+    Returns:
+        RevokedTokensRepository: Репозиторий отозванных токенов.
+    """
+    return RevokedTokensRepository(as_redis(redis_double))
 
 
 @pytest.fixture

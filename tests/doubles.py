@@ -89,16 +89,21 @@ class InMemoryRedis:
         self.ttl: dict[str, int] = {}
         self._unavailable = unavailable
 
-    async def set(self, key: str, value: str) -> None:
+    async def set(self, key: str, value: str, *, ex: int | None = None) -> None:
         """Сохраняет значение по ключу.
 
         Args:
             key (str): Ключ Redis.
             value (str): Значение ключа.
+            ex (int | None, optional): Время жизни ключа в секундах, как `EX` у Redis.
+                Defaults to None.
         """
         self._ensure_available()
 
         self.values[key] = value
+
+        if ex is not None:
+            self.ttl[key] = ex
 
     async def get(self, key: str) -> str | None:
         """Возвращает значение ключа.
@@ -112,6 +117,19 @@ class InMemoryRedis:
         self._ensure_available()
 
         return self.values.get(key)
+
+    async def exists(self, key: str) -> int:
+        """Сообщает, есть ли значение по ключу.
+
+        Args:
+            key (str): Ключ Redis.
+
+        Returns:
+            int: 1, если ключ есть, иначе 0, как у Redis.
+        """
+        self._ensure_available()
+
+        return int(key in self.values)
 
     async def mget(self, keys: Sequence[str]) -> list[str | None]:
         """Возвращает значения нескольких ключей.
@@ -191,6 +209,17 @@ class InMemoryUserRepository:
     def __init__(self) -> None:
         """Инициализация пустого хранилища."""
         self.users: list[User] = []
+
+    async def get(self, user_id: int) -> User | None:
+        """Возвращает учётную запись по идентификатору.
+
+        Args:
+            user_id (int): Идентификатор учётной записи.
+
+        Returns:
+            User | None: Учётная запись или None, если её нет.
+        """
+        return next((user for user in self.users if user.id == user_id), None)
 
     async def get_by_username(self, username: str) -> User | None:
         """Возвращает учётную запись по логину.

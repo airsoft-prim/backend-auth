@@ -24,3 +24,10 @@ class UserRole(NiftyStrEnum):
     ADMIN = "admin"
     MODERATOR = "moderator"
     USER = "user"
+
+
+class TokenType(NiftyStrEnum):
+    """Тип JWT токена."""
+
+    ACCESS = "access"
+    REFRESH = "refresh"

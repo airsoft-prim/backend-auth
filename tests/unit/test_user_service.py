@@ -165,6 +165,39 @@ async def test_register_keeps_logins_case_sensitive(
     assert [account.username for account in repository.users] == ["Stalker_2010", USERNAME]
 
 
+async def test_get_account_returns_stored_user(
+    service: UserService,
+    repository: InMemoryUserRepository,
+) -> None:
+    """Получение учётной записи по идентификатору.
+
+    Given: учётная запись сохранена в репозитории,
+    When: сервис запрашивает её по Id из токена,
+    Then: возвращается та же учётная запись.
+    """
+    # Дано
+    account = _stored_account()
+    repository.users.append(account)
+
+    # Когда
+    found = await service.get_account(USER_ID)
+
+    # Тогда
+    assert found is account
+
+
+async def test_get_account_rejects_unknown_user(service: UserService) -> None:
+    """Получение несуществующей учётной записи.
+
+    Given: учётной записи с таким Id нет в репозитории,
+    When: сервис запрашивает её по Id из токена,
+    Then: сервис сообщает об ошибке идентификации.
+    """
+    # Когда / Тогда
+    with pytest.raises(UserIdentificationError, match="User not found"):
+        await service.get_account(USER_ID)
+
+
 async def test_login_returns_user_id_and_role(
     service: UserService,
     repository: InMemoryUserRepository,

@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 
 from src.general.exceptions import ApplicationError, ProviderError, SecurityError
+from src.services.auth import UserAuthorizationError
 from src.services.jwt import JWTDecryptionError, JWTEncryptionError
 from src.services.user import (
     UserAlreadyExistsError,
@@ -93,6 +94,22 @@ async def jwt_decryption_exc_handler(_: Request, exc: JWTDecryptionError) -> JSO
     return JSONResponse(content=content, status_code=status.HTTP_403_FORBIDDEN)
 
 
+async def user_auth_exc_handler(_: Request, exc: UserAuthorizationError) -> JSONResponse:
+    """Обработчик ошибки авторизации пользователя."""
+    logger.opt(exception=exc).info("Bearer token is missing.")
+
+    content = {
+        "message": "Authorization failed.",
+        "details": "Bearer token is missing.",
+    }
+
+    return JSONResponse(
+        content=content,
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
 async def login_exc_handler(_: Request, exc: SecurityError) -> JSONResponse:
     """Обработчик ошибок, возникающих во время процедуры login пользователя."""
     exc_map: dict[type[SecurityError], int] = {
@@ -130,6 +147,7 @@ _handling_map: ExceptionsHandlingMap = {
     JWTDecryptionError: jwt_decryption_exc_handler,
     UserIdentificationError: login_exc_handler,
     UserAuthenticationError: login_exc_handler,
+    UserAuthorizationError: user_auth_exc_handler,
     UserAlreadyExistsError: user_exists_exc_handler,
 }
 

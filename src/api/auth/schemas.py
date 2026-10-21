@@ -77,13 +77,15 @@ class AccessToken(BaseModel):
 class UserData(BaseModel):
     """Данные учётной записи, который сервис сообщает её владельцу."""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: int = Field(description="Идентификатор учётной записи.", examples=[42])
 
     username: str = Field(description="Логин учётной записи.", examples=["Oidaho"])
     email: EmailStr = Field(description="Адрес электронной почты.", examples=["user@example.ru"])
-    role: UserRole = Field(description="Системная роль владельца учётной записи.")
+    role: UserRole = Field(
+        validation_alias="system_role", description="Системная роль владельца учётной записи."
+    )
 
     created_at: datetime = Field(description="Момент создания учётной записи.")
     updated_at: datetime = Field(description="Момент последнего обновления учётной записи.")

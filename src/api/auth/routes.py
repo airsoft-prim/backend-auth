@@ -1,13 +1,22 @@
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, Response
 
+from src.general.security import AccessTokenClaims
+from src.providers.database.models import User
 from src.services import JWTEncryptionService
+from src.services.token import TokenRevocationService
 from src.services.user import UserService
 
-from .deps import get_encryption_service, get_user_service
-from .docs import LOGIN_DOCS, LOGOUT_DOCS, REGISTER_DOCS
-from .schemas import AccessToken, LoginRequestBody, RegisterRequestBody
+from .deps import (
+    get_access_token,
+    get_current_user,
+    get_encryption_service,
+    get_token_revocation_service,
+    get_user_service,
+)
+from .docs import LOGIN_DOCS, LOGOUT_DOCS, ME_DOCS, REGISTER_DOCS
+from .schemas import AccessToken, LoginRequestBody, RegisterRequestBody, UserData
 
 router = APIRouter(prefix="/auth", tags=["Аутентификация"])
 
@@ -51,11 +60,28 @@ async def login_user(
     return AccessToken(access_token=access_token, expires_in=expires_in)
 
 
-@router.post("/logout", **LOGOUT_DOCS)
-async def logout_user(current_user: Any) -> None:
+@router.get("/me", **ME_DOCS)
+async def get_me(current_user: Annotated[User, Depends(get_current_user)]) -> UserData:
+    """Функция получения данных учётной записи владельца токена.
+
+    Args:
+        current_user (User): Учётная запись владельца проверенного токена.
+
+    Returns:
+        UserData: Данные учётной записи без служебных полей.
+    """
+    return UserData.model_validate(current_user)
+
+
+@router.post("/logout", response_class=Response, **LOGOUT_DOCS)
+async def logout_user(
+    claims: Annotated[AccessTokenClaims, Depends(get_access_token)],
+    revocation_service: Annotated[TokenRevocationService, Depends(get_token_revocation_service)],
+) -> None:
     """Функция выхода из системы.
 
     Args:
-        current_user (Any): Пользователь, которому принадлежит токен.
+        claims (AccessTokenClaims): Проверенные claims токена текущей сессии.
+        revocation_service (TokenRevocationService): Сервис отзыва токенов.
     """
-    raise NotImplementedError
+    await revocation_service.revoke(claims)
