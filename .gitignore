@@ -220,3 +220,4 @@ __marimo__/
 
 # Encryption Keys
 *.pem
+.keys/

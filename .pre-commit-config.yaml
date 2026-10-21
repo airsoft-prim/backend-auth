@@ -1,13 +1,5 @@
 default_stages: [pre-commit]
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
-default_language_version:
-  python: python3.13
-
-# Метки файлов и каталогов.
-x-aliases:
-  - &python_tests_exclude ^(tests|scripts)/
-  - &uv_lock_files ^(pyproject\.toml|uv\.lock)$
-  - &helm_files ^(.helm)/
 
 repos:
   - repo: https://github.com/compilerla/conventional-pre-commit
@@ -30,7 +22,7 @@ repos:
       - id: check-json
       - id: check-toml
       - id: check-yaml
-        exclude: *helm_files
+        exclude: ^\.helm/
         args: ["--allow-multiple-documents"]
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
@@ -47,9 +39,11 @@ repos:
     hooks:
       - id: ty
         entry: ty check --quiet
-        language: system
-        pass_filenames: true
+        language: python
+        additional_dependencies: ["ty==0.0.84"]
+        pass_filenames: false
         always_run: false
+        require_serial: true
         types_or: [python, pyi]
 
   - repo: https://github.com/PyCQA/bandit
@@ -57,7 +51,7 @@ repos:
     hooks:
       - id: bandit
         args: ["-q"]
-        exclude: *python_tests_exclude
+        exclude: ^(tests|scripts)/
 
   - repo: https://github.com/executablebooks/mdformat
     rev: 1.0.0
@@ -69,13 +63,9 @@ repos:
         exclude: ^(AGENTS\.md|\.agents/.*)$
         additional_dependencies: ["mdformat==1.0.0", "mdformat-gfm==1.0.0"]
 
-  - repo: local
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.11.15
     hooks:
       - id: uv-lock
-        name: uv.lock sync'ed with pyproject.toml
-        entry: uv lock --check
-        language: system 
-        files: *uv_lock_files
-        require_serial: true
+        args: ["--check", "--no-cache"]
         verbose: true
-        pass_filenames: false

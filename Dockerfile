@@ -18,6 +18,7 @@ FROM python:3.14-slim AS deploy
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    SECURITY_KEY_STORE_DIRECTORY=/var/lib/app/keys \
     PATH="/app/.venv/bin:${PATH}"
 
 RUN apt-get update \

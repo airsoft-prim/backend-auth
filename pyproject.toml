@@ -9,7 +9,8 @@ authors = [
 maintainers = []
 classifiers = [
     "License :: GPLv3",
-    "Operating System :: OS Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.14",
 ]

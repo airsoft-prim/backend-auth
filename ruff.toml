@@ -30,6 +30,7 @@ exclude = [
     "report",
 ]
 
+[lint]
 extend-select = [
     "C90",    # mccabe
     "N",      # pep8-naming
@@ -64,8 +65,6 @@ extend-select = [
 ]
 
 ignore = [
-    "ANN101",
-    "ANN102",
     "ANN401",
     "RUF001",
     "RUF002",
@@ -86,5 +85,6 @@ force-sort-within-sections = true
 [format]
 quote-style = "double"
 indent-style = "space"
+line-ending = "lf"
 skip-magic-trailing-comma = false
 exclude = ["*.pyi"]
