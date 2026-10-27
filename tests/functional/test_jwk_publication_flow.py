@@ -5,7 +5,7 @@ from typing import Any
 
 import jwt
 
-from src.services.jwk import JWKGenerationService
+from src.application.jwk import JWKGenerationService
 from tests.asgi_client import ASGIClient
 from tests.doubles import InMemoryRedis
 from tests.functional.conftest import TokenSigner

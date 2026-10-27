@@ -5,10 +5,10 @@ from collections.abc import Callable
 from fastapi import FastAPI
 import pytest
 
-from src.api.auth.deps import get_user_service
-from src.api.well_known.deps import get_jwk_publishing_service
-from src.providers.cache.repositories import PublicJWKRepository
-from src.services.jwk import JWKPublishingService
+from src.adapters.cache.repositories import RedisPublicJwkRepository
+from src.application.jwk import JWKPublishingService
+from src.interface.auth.deps import get_user_service
+from src.interface.well_known.deps import get_jwk_publishing_service
 from tests.asgi_client import ASGIClient
 
 __all__ = [
@@ -54,7 +54,7 @@ class StubUserService:
             raise self._error
 
 
-type JWKSClientFactory = Callable[[PublicJWKRepository], ASGIClient]
+type JWKSClientFactory = Callable[[RedisPublicJwkRepository], ASGIClient]
 type RegisterClientFactory = Callable[[StubUserService], ASGIClient]
 
 
@@ -72,7 +72,7 @@ def jwks_client_factory(api_app: FastAPI) -> JWKSClientFactory:
         JWKSClientFactory: Фабрика клиентов эндпоинта.
     """
 
-    def _factory(repository: PublicJWKRepository) -> ASGIClient:
+    def _factory(repository: RedisPublicJwkRepository) -> ASGIClient:
         api_app.dependency_overrides[get_jwk_publishing_service] = lambda: JWKPublishingService(
             jwk_repository=repository
         )

@@ -6,10 +6,10 @@ from fastapi import status
 import pytest
 from redis.asyncio import Redis
 
-from src.providers.cache.repositories import PublicJWKRepository
-from src.providers.filesystem import FileSystem
-from src.providers.filesystem.repositories import PrivateJWKRepository
-from src.services.jwk import JWKGenerationService
+from src.adapters.cache.repositories import RedisPublicJwkRepository
+from src.adapters.filesystem import FileSystem
+from src.adapters.filesystem.repositories import FilePrivateJwkRepository
+from src.application.jwk import JWKGenerationService
 from tests.asgi_client import ASGIClient
 
 JWKS_PATH = "/.well-known/jwks.json"
@@ -31,8 +31,8 @@ def _service(key_store_dir: Path, redis_client: Redis) -> JWKGenerationService:
         JWKGenerationService: Сервис генерации и публикации ключей.
     """
     return JWKGenerationService(
-        PrivateJWKRepository(FileSystem(key_store_dir)),
-        PublicJWKRepository(redis_client),
+        FilePrivateJwkRepository(FileSystem(key_store_dir)),
+        RedisPublicJwkRepository(redis_client),
     )
 
 

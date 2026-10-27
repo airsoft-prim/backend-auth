@@ -4,16 +4,16 @@ from pathlib import Path
 
 import pytest
 
-from src.general.exceptions import RepositoryError
-from src.providers.filesystem import FileSystem
-from src.providers.filesystem.repositories import PrivateJWKRepository
+from src.adapters.filesystem import FileSystem
+from src.adapters.filesystem.repositories import FilePrivateJwkRepository
+from src.domain.errors import RepositoryError
 
 PAYLOAD = b"first key payload"
 ROTATED_PAYLOAD = b"rotated key payload"
 
 
 async def test_acquire_returns_none_before_first_store(
-    private_jwk_repository: PrivateJWKRepository,
+    private_jwk_repository: FilePrivateJwkRepository,
 ) -> None:
     """Приватный ключ ещё не сгенерирован.
 
@@ -25,7 +25,7 @@ async def test_acquire_returns_none_before_first_store(
 
 
 async def test_store_writes_key_file(
-    private_jwk_repository: PrivateJWKRepository,
+    private_jwk_repository: FilePrivateJwkRepository,
     key_store_dir: Path,
 ) -> None:
     """Запись приватного ключа.
@@ -36,12 +36,12 @@ async def test_store_writes_key_file(
     """
     await private_jwk_repository.store(PAYLOAD)
 
-    assert (key_store_dir / PrivateJWKRepository.FILE_NAME).read_bytes() == PAYLOAD
+    assert (key_store_dir / FilePrivateJwkRepository.FILE_NAME).read_bytes() == PAYLOAD
     assert await private_jwk_repository.acquire() == PAYLOAD
 
 
 async def test_acquire_reads_latest_key_after_rotation(
-    private_jwk_repository: PrivateJWKRepository,
+    private_jwk_repository: FilePrivateJwkRepository,
 ) -> None:
     """Ротация приватного ключа.
 
@@ -58,7 +58,7 @@ async def test_acquire_reads_latest_key_after_rotation(
 
 
 async def test_repository_does_not_keep_state_between_instances(
-    private_jwk_repository: PrivateJWKRepository,
+    private_jwk_repository: FilePrivateJwkRepository,
     key_store_dir: Path,
 ) -> None:
     """Отсутствие состояния у репозитория.
@@ -69,13 +69,13 @@ async def test_repository_does_not_keep_state_between_instances(
     """
     await private_jwk_repository.store(PAYLOAD)
 
-    repository = PrivateJWKRepository(FileSystem(key_store_dir))
+    repository = FilePrivateJwkRepository(FileSystem(key_store_dir))
 
     assert await repository.acquire() == PAYLOAD
 
 
 async def test_acquire_reports_unreadable_file_as_repository_error(
-    private_jwk_repository: PrivateJWKRepository,
+    private_jwk_repository: FilePrivateJwkRepository,
     key_store_dir: Path,
 ) -> None:
     """Ошибка чтения keyfile.
@@ -84,7 +84,7 @@ async def test_acquire_reports_unreadable_file_as_repository_error(
     When: репозиторий читает приватный ключ,
     Then: ошибка файловой системы приходит как ошибка репозитория.
     """
-    (key_store_dir / PrivateJWKRepository.FILE_NAME).mkdir(parents=True)
+    (key_store_dir / FilePrivateJwkRepository.FILE_NAME).mkdir(parents=True)
 
     with pytest.raises(RepositoryError, match="reading error"):
         await private_jwk_repository.acquire()

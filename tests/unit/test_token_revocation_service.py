@@ -4,9 +4,10 @@ from datetime import UTC, datetime
 
 import pytest
 
-from src.general.security import AccessTokenClaims
-from src.providers.cache.repositories import RevokedTokensRepository
-from src.services import TokenRevocationService, TokenRevokedError
+from src.adapters.cache.repositories import RedisRevokedTokensRepository
+from src.application import TokenRevocationService
+from src.domain.entities import AccessTokenClaims
+from src.domain.errors import TokenRevokedError
 from tests.doubles import InMemoryRedis
 
 TOKEN_ID = "token-under-test"  # noqa: S105
@@ -45,7 +46,7 @@ def _expires_in(seconds: int) -> int:
 
 
 async def test_revoke_stores_token_until_it_expires(
-    blacklisted_tokens_repository: RevokedTokensRepository,
+    blacklisted_tokens_repository: RedisRevokedTokensRepository,
     redis_double: InMemoryRedis,
 ) -> None:
     """Отзыв действующего токена.
@@ -68,7 +69,7 @@ async def test_revoke_stores_token_until_it_expires(
 
 
 async def test_revoke_does_not_store_expired_token(
-    blacklisted_tokens_repository: RevokedTokensRepository,
+    blacklisted_tokens_repository: RedisRevokedTokensRepository,
     redis_double: InMemoryRedis,
 ) -> None:
     """Отзыв уже истёкшего токена.
@@ -89,7 +90,7 @@ async def test_revoke_does_not_store_expired_token(
 
 
 async def test_ensure_active_accepts_token_that_is_not_revoked(
-    blacklisted_tokens_repository: RevokedTokensRepository,
+    blacklisted_tokens_repository: RedisRevokedTokensRepository,
 ) -> None:
     """Проверка действующего токена.
 
@@ -106,7 +107,7 @@ async def test_ensure_active_accepts_token_that_is_not_revoked(
 
 
 async def test_ensure_active_rejects_revoked_token(
-    blacklisted_tokens_repository: RevokedTokensRepository,
+    blacklisted_tokens_repository: RedisRevokedTokensRepository,
 ) -> None:
     """Проверка отозванного токена.
 

@@ -2,9 +2,9 @@
 
 import pytest
 
-from src.general.exceptions import RepositoryError
-from src.providers.cache.repositories import PublicJWKRepository
-from src.services.jwk import JWKGenerationService, JWKPublishingService
+from src.adapters.cache.repositories import RedisPublicJwkRepository
+from src.application.jwk import JWKGenerationService, JWKPublishingService
+from src.domain.errors import RepositoryError
 
 KEY_TTL_SECONDS = 3600
 
@@ -47,7 +47,7 @@ async def test_collect_returns_empty_sequence_when_nothing_is_published(
 
 
 async def test_collect_propagates_cache_failure(
-    unavailable_repository: PublicJWKRepository,
+    unavailable_repository: RedisPublicJwkRepository,
 ) -> None:
     """Отказ кеша публичных ключей.
 

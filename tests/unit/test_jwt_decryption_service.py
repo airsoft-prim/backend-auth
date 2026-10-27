@@ -8,9 +8,10 @@ import jwt
 from jwt import PyJWK
 import pytest
 
-from src.core.configs import config
-from src.services.jwk import JWKGenerationService
-from src.services.jwt import JWTDecryptionError, JWTDecryptionService, JWTEncryptionService
+from src.application.jwk import JWKGenerationService
+from src.application.token import JWTDecryptionService, JWTEncryptionService
+from src.config import config
+from src.domain.errors import JWTDecryptionError
 from tests.doubles import InMemoryRedis
 from tests.unit.conftest import RawTokenSigner
 

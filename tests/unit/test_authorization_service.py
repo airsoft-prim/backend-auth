@@ -2,17 +2,16 @@
 
 import pytest
 
-from src.general.enums import TokenType
-from src.providers.cache.repositories import RevokedTokensRepository
-from src.services import (
+from src.adapters.cache.repositories import RedisRevokedTokensRepository
+from src.application import (
     AuthorizationService,
     JWTDecryptionService,
     JWTEncryptionService,
     TokenRevocationService,
-    TokenRevokedError,
-    UserAuthorizationError,
 )
-from src.services.jwk import JWKGenerationService
+from src.application.jwk import JWKGenerationService
+from src.domain.enums import TokenType
+from src.domain.errors import TokenRevokedError, UserAuthorizationError
 
 SUBJECT = 42
 TOKEN_ID = "authorization-token-under-test"  # noqa: S105
@@ -22,13 +21,13 @@ TTL_SECONDS = 3600
 @pytest.fixture
 def authorization_service(
     decryption_service: JWTDecryptionService,
-    blacklisted_tokens_repository: RevokedTokensRepository,
+    blacklisted_tokens_repository: RedisRevokedTokensRepository,
 ) -> AuthorizationService:
     """Отдаёт сервис авторизации поверх подмены Redis.
 
     Args:
         decryption_service (JWTDecryptionService): Сервис проверки токенов.
-        blacklisted_tokens_repository (RevokedTokensRepository): Репозиторий
+        blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий
             отозванных токенов поверх подмены Redis.
 
     Returns:
@@ -102,7 +101,7 @@ async def test_authorize_rejects_revoked_token(
     authorization_service: AuthorizationService,
     jwk_service: JWKGenerationService,
     encryption_service: JWTEncryptionService,
-    blacklisted_tokens_repository: RevokedTokensRepository,
+    blacklisted_tokens_repository: RedisRevokedTokensRepository,
 ) -> None:
     """Авторизация отозванного токена.
 

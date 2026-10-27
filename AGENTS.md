@@ -42,23 +42,29 @@ Dev tooling belongs to `[dependency-groups]` (`dev`, `test`), never to `dependen
 
 ## Layout
 
+Clean Architecture (Ports & Adapters). Inner layers depend only on ports, never on adapters.
+
 ```text
-main.py            entry point: uvicorn + app from src
-src/app.py         FastAPI assembly, lifespan
-src/api/           HTTP layer: auth/, health/, password/, well_known/
-src/core/          cross-cutting config (configs/) and logging
-src/services/      domain services: JWT, JWKS
-src/general/       shared types and enums
-src/providers/     external resources: database/ (engine, models, repositories), cache/
-migrations/        Alembic
-tests/             pytest
-docs/              project documentation
+main.py                 entry point: uvicorn + app from src
+src/app.py              FastAPI assembly, lifespan
+src/bootstrap.py        composition root: process-level wiring (rotation daemon)
+src/domain/             entities (User), enums, errors, ports (typing.Protocol)
+src/application/        use cases: auth/, token (JWT), jwk — depend on domain ports only
+src/adapters/           driven adapters: database/, cache/, filesystem/, crypto/ (implement ports)
+src/interface/          driving adapter: FastAPI layer (auth/, health/, password/, well_known/)
+src/scheduler/          driving adapter: cron key rotation
+src/config/             bootstrap: env -> Configs (pydantic-settings)
+migrations/             Alembic
+tests/                  pytest
+docs/                    project documentation
 ```
 
-Dependency direction: `api` -> `services` -> (`providers`, `core`) -> `general`.
-Routers never reach the database directly: data access goes through `providers/repositories/`, domain
-logic through `services/`; providers know nothing about HTTP. Attach a new router to `main_router` in
-`src/api/__init__.py`.
+Dependency rule: `{interface, scheduler}` -> `application` -> `domain`; `adapters` implements the
+`Protocol` ports in `src/domain/ports.py`, and `bootstrap.py` + request-scoped `deps.py` wire concrete
+adapters into the use cases. Use cases depend only on ports, never on adapters or on the global `config`
+(values are injected). Routers never reach the database directly: data access goes through the port
+implementations in `adapters/`. Attach a new router to `main_router` in
+`src/interface/__init__.py`.
 
 ## Commands
 
@@ -86,8 +92,7 @@ exactly what stayed unverified instead of reporting a green run as verified.
 ## Code style
 
 Source of truth is `ruff.toml` and `ty.toml`, not this section. Expect `line-length = 100`,
-`target-version = "py314"`, double quotes, and rule sets `C90, N, UP, S, BLE, B, C4, DTZ, EM, FA, ISC,
-PIE, PT, SLF, SIM, ARG, ERA, A, F, Q, ASYNC, E, W, T20, ANN, PL, RET, RUF, PYI, PD`.
+`target-version = "py314"`, double quotes, and rule sets `C90, N, UP, S, BLE, B, C4, DTZ, EM, FA, ISC, PIE, PT, SLF, SIM, ARG, ERA, A, F, Q, ASYNC, E, W, T20, ANN, PL, RET, RUF, PYI, PD`.
 
 - Annotate everything, return types included (`ANN`).
 - No `print` (`T20`): log through `loguru.logger`.
@@ -100,18 +105,18 @@ PIE, PT, SLF, SIM, ARG, ERA, A, F, Q, ASYNC, E, W, T20, ANN, PL, RET, RUF, PYI, 
 - Russian is fine in strings and docstrings (`RUF001` / `RUF002` are off); error and exception messages
   stay English because they reach API responses and logs.
 - Google-style docstrings (`Args` / `Returns` / `Yields`), Russian allowed.
-- `src/core/configs/*` attributes are `UPPER_CASE` and mirror env variable names; wrapper properties
-  need `# noqa: N802` (see `CacheConfiguration.DSN`).
+- `src/config/*` attributes are `UPPER_CASE` and mirror env variable names; wrapper
+  properties need `# noqa: N802` (see `CacheConfiguration.DSN`).
 - One sorted import list (`force-sort-within-sections`), with `combine-as-imports`.
-- New public module members go to `__all__` (see `src/__init__.py`, `src/api/__init__.py`).
+- `__all__` lives only in `__init__.py` files (package re-exports); plain modules don't declare it.
 - OpenAPI descriptions live in `docs.py` next to the router, typed with `RouteDocs` (pattern:
-  `src/api/health/docs.py`).
+  `src/interface/health/docs.py`).
 - Pad markdown tables to equal widths in every `.md` file, this one included; realign a whole table
   block when editing it.
 
-Reference patterns: `src/api/health/routes.py`, `src/core/configs/database.py`,
-`src/providers/database/models.py`. Before finishing, run `uv run ruff check .`, `uv run ruff format .`,
-`uv run ty check`.
+Reference patterns: `src/interface/health/routes.py`, `src/config/database.py`,
+`src/adapters/database/models.py`, `src/domain/ports.py`. Before finishing, run
+`uv run ruff check .`, `uv run ruff format .`, `uv run ty check`.
 
 ## Tests
 
@@ -125,7 +130,7 @@ Reference patterns: `src/api/health/routes.py`, `src/core/configs/database.py`,
 ## Comments and docs
 
 - Comment non-obvious decisions, invariants and constraints; a comment that restates the code is noise
-  (tone reference: `NAMING_CONVENTION` in `src/providers/database/models.py`).
+  (tone reference: `NAMING_CONVENTION` in `src/adapters/database/models.py`).
 - In service and config files (`ruff.toml`, `ty.toml`, `pyproject.toml`, `pytest.ini`, `alembic.ini`) edit
   without comments: explanations there are the project owner's job. Markdown docs do need explanations.
 - `README.md` stays a compact showcase; update `docs/DOMAIN.md` when domain logic changes.
@@ -153,6 +158,6 @@ Reference patterns: `src/api/health/routes.py`, `src/core/configs/database.py`,
 ## Workflow
 
 1. Read the domain and the relevant code, then propose a solution.
-2. Make the smallest coherent change, following the layering and conventions above.
-3. Verify: `uv run ruff check .`, `uv run ruff format .`, `uv run ty check`, `uv run pytest`.
-4. Report what changed and what was actually verified; state plainly what could not be checked.
+1. Make the smallest coherent change, following the layering and conventions above.
+1. Verify: `uv run ruff check .`, `uv run ruff format .`, `uv run ty check`, `uv run pytest`.
+1. Report what changed and what was actually verified; state plainly what could not be checked.

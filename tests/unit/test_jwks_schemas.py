@@ -3,7 +3,7 @@
 from pydantic import ValidationError
 import pytest
 
-from src.api.well_known.schemas import JSONWebKeySet
+from src.interface.well_known.schemas import JSONWebKeySet
 
 KEY_ID = "nzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs"
 PUBLIC_PART = "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"

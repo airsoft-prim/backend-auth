@@ -5,14 +5,18 @@ from datetime import UTC, datetime
 from fastapi import FastAPI, status
 import pytest
 
-from src.api.auth.deps import get_decryption_service, get_token_revocation_service, get_user_service
-from src.general.enums import TokenType, UserRole
-from src.general.security import PASSWORD_HASHER
-from src.providers.cache.repositories import RevokedTokensRepository
-from src.providers.database.models import User
-from src.services import JWTDecryptionService, JWTEncryptionService, TokenRevocationService
-from src.services.jwk import JWKGenerationService
-from src.services.user import UserService
+from src.adapters.cache.repositories import RedisRevokedTokensRepository
+from src.adapters.crypto.hasher import PASSWORD_HASHER
+from src.application import JWTDecryptionService, JWTEncryptionService, TokenRevocationService
+from src.application.auth import UserService
+from src.application.jwk import JWKGenerationService
+from src.domain.entities import User
+from src.domain.enums import TokenType, UserRole
+from src.interface.auth.deps import (
+    get_decryption_service,
+    get_token_revocation_service,
+    get_user_service,
+)
 from tests.asgi_client import ASGIClient
 from tests.doubles import InMemoryUserRepository, as_user_repository
 
@@ -41,7 +45,7 @@ def me_client(
     api_app: FastAPI,
     user_repository: InMemoryUserRepository,
     decryption_service: JWTDecryptionService,
-    blacklisted_tokens_repository: RevokedTokensRepository,
+    blacklisted_tokens_repository: RedisRevokedTokensRepository,
 ) -> ASGIClient:
     """Отдаёт клиент профиля с подменами БД, проверки токена и хранилища отзыва.
 
@@ -50,7 +54,7 @@ def me_client(
         user_repository (InMemoryUserRepository): Подмена репозитория учётных записей.
         decryption_service (JWTDecryptionService): Сервис проверки токенов поверх
             подмены Redis с опубликованными JWK.
-        blacklisted_tokens_repository (RevokedTokensRepository): Репозиторий
+        blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий
             отозванных токенов поверх подмены Redis.
 
     Returns:
@@ -233,7 +237,7 @@ async def test_me_rejects_revoked_token(
     user_repository: InMemoryUserRepository,
     jwk_service: JWKGenerationService,
     encryption_service: JWTEncryptionService,
-    blacklisted_tokens_repository: RevokedTokensRepository,
+    blacklisted_tokens_repository: RedisRevokedTokensRepository,
 ) -> None:
     """Профиль с отозванным токеном.
 

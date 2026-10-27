@@ -10,11 +10,12 @@ import jwt
 from jwt import PyJWK
 import pytest
 
-from src.core.configs import config
-from src.general.security import SIGNING_ALGORITHM
-from src.providers.filesystem.repositories import PrivateJWKRepository
-from src.services.jwk import JWKGenerationService
-from src.services.jwt import JWTEncryptionError, JWTEncryptionService
+from src.adapters.filesystem.repositories import FilePrivateJwkRepository
+from src.application.jwk import JWKGenerationService
+from src.application.security import SIGNING_ALGORITHM
+from src.application.token import JWTEncryptionService
+from src.config import config
+from src.domain.errors import JWTEncryptionError
 
 SUBJECT = 42
 SUBJECT_ROLE = "moderator"
@@ -199,7 +200,7 @@ async def test_encrypt_rejects_malformed_key_file(
     Then: он сообщает о невалидном ключе подписи.
     """
     # Дано
-    key_file = key_store_dir / PrivateJWKRepository.FILE_NAME
+    key_file = key_store_dir / FilePrivateJwkRepository.FILE_NAME
     key_file.parent.mkdir(parents=True, exist_ok=True)
     key_file.write_bytes(b"not a pem private key")
 
@@ -219,7 +220,7 @@ async def test_encrypt_rejects_foreign_key_algorithm(
     Then: он отказывается подписывать токен неподдерживаемым ключом.
     """
     # Дано
-    key_file = key_store_dir / PrivateJWKRepository.FILE_NAME
+    key_file = key_store_dir / FilePrivateJwkRepository.FILE_NAME
     key_file.parent.mkdir(parents=True, exist_ok=True)
     key_file.write_bytes(_foreign_algorithm_pem())
 

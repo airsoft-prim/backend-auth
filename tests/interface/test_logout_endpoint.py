@@ -3,10 +3,10 @@
 from fastapi import FastAPI, status
 import pytest
 
-from src.api.auth.deps import get_decryption_service, get_token_revocation_service
-from src.providers.cache.repositories import RevokedTokensRepository
-from src.services import JWTDecryptionService, JWTEncryptionService, TokenRevocationService
-from src.services.jwk import JWKGenerationService
+from src.adapters.cache.repositories import RedisRevokedTokensRepository
+from src.application import JWTDecryptionService, JWTEncryptionService, TokenRevocationService
+from src.application.jwk import JWKGenerationService
+from src.interface.auth.deps import get_decryption_service, get_token_revocation_service
 from tests.asgi_client import ASGIClient
 from tests.doubles import InMemoryRedis
 
@@ -20,7 +20,7 @@ TTL_SECONDS = 3600
 def logout_client(
     api_app: FastAPI,
     decryption_service: JWTDecryptionService,
-    blacklisted_tokens_repository: RevokedTokensRepository,
+    blacklisted_tokens_repository: RedisRevokedTokensRepository,
 ) -> ASGIClient:
     """Отдаёт клиент выхода с подменой проверки токена и хранилища отзыва.
 
@@ -28,7 +28,7 @@ def logout_client(
         api_app (FastAPI): Приложение под тестом.
         decryption_service (JWTDecryptionService): Сервис проверки токенов поверх
             подмены Redis с опубликованными JWK.
-        blacklisted_tokens_repository (RevokedTokensRepository): Репозиторий
+        blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий
             отозванных токенов поверх подмены Redis.
 
     Returns:

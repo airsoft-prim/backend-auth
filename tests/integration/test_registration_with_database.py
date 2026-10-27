@@ -4,11 +4,11 @@ from pwdlib import PasswordHash
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.general.enums import UserRole
-from src.general.exceptions import RepositoryError
-from src.providers.database.models import User
-from src.providers.database.repositories import UserRepository
-from src.services.user import UserAlreadyExistsError, UserService
+from src.adapters.database.repositories import SqlAlchemyUserRepository
+from src.application.auth import UserService
+from src.domain.entities import User
+from src.domain.enums import UserRole
+from src.domain.errors import RepositoryError, UserAlreadyExistsError
 
 USERNAME = "stalker_2010"
 EMAIL = "user@airsoft-prim.ru"
@@ -27,7 +27,7 @@ def service(database_session: AsyncSession, password_hash: PasswordHash) -> User
         UserService: Сервис, работающий с настоящей БД.
     """
     return UserService(
-        user_repository=UserRepository(database_session),
+        user_repository=SqlAlchemyUserRepository(database_session),
         hasher=password_hash,
     )
 
@@ -48,7 +48,7 @@ async def test_registration_stores_hashed_account_in_database(
     await service.register(username=USERNAME, email=EMAIL, password=PASSWORD)
 
     # Тогда
-    stored = await UserRepository(database_session).get_by_username(USERNAME)
+    stored = await SqlAlchemyUserRepository(database_session).get_by_username(USERNAME)
     assert stored is not None
     assert stored.id is not None
     assert stored.system_role is UserRole.USER
@@ -56,6 +56,8 @@ async def test_registration_stores_hashed_account_in_database(
     assert stored.pswd_hash != PASSWORD
     assert stored.pswd_hash.startswith("$argon2id$")
     assert password_hash.verify(PASSWORD, stored.pswd_hash)
+    assert stored.created_at is not None
+    assert stored.updated_at is not None
     assert stored.created_at.tzinfo is not None
     assert stored.updated_at.tzinfo is not None
 
@@ -88,7 +90,7 @@ async def test_database_keeps_email_unique_regardless_of_case(
     Then: БД отвергает запись: уникальность держит функциональный индекс по `lower(email)`.
     """
     # Дано
-    repository = UserRepository(database_session)
+    repository = SqlAlchemyUserRepository(database_session)
     await repository.save(User(username=USERNAME, email=EMAIL, pswd_hash="stored-hash"))
 
     # Когда / Тогда

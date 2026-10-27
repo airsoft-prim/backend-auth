@@ -3,8 +3,8 @@
 from fastapi import status
 import pytest
 
-from src.providers.cache.repositories import PublicJWKRepository
-from src.services.jwk import JWKGenerationService
+from src.adapters.cache.repositories import RedisPublicJwkRepository
+from src.application.jwk import JWKGenerationService
 from tests.asgi_client import ASGIClient
 from tests.interface.conftest import JWKSClientFactory
 
@@ -82,7 +82,7 @@ async def test_jwks_denies_methods_other_than_get(
 
 async def test_get_jwks_fails_with_server_error_when_cache_is_unavailable(
     jwks_client_factory: JWKSClientFactory,
-    unavailable_repository: PublicJWKRepository,
+    unavailable_repository: RedisPublicJwkRepository,
 ) -> None:
     """Отказ кеша публичных ключей.
 

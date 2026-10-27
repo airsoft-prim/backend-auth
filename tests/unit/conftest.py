@@ -9,8 +9,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 import jwt
 import pytest
 
-from src.general.security import SIGNING_ALGORITHM
-from src.providers.filesystem.repositories import PrivateJWKRepository
+from src.adapters.filesystem.repositories import FilePrivateJwkRepository
+from src.application.security import SIGNING_ALGORITHM
 
 __all__ = [
     "RawTokenSigner",
@@ -77,7 +77,7 @@ def patch_daemon_sleep(monkeypatch: pytest.MonkeyPatch, *, rotations: int) -> li
             msg = "Rotation loop interrupted by the test."
             raise RotationInterruptedError(msg)
 
-    monkeypatch.setattr("src.rotation.daemon.asyncio.sleep", _sleep)
+    monkeypatch.setattr("src.scheduler.daemon.asyncio.sleep", _sleep)
 
     return delays
 
@@ -98,7 +98,7 @@ def raw_token_signer(key_store_dir: Path) -> RawTokenSigner:
     """
 
     def _sign(claims: dict[str, Any], key_id: str | None) -> str:
-        key_file = key_store_dir / PrivateJWKRepository.FILE_NAME
+        key_file = key_store_dir / FilePrivateJwkRepository.FILE_NAME
         private_key = serialization.load_pem_private_key(key_file.read_bytes(), password=None)
 
         if not isinstance(private_key, Ed25519PrivateKey):

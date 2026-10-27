@@ -10,9 +10,9 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 import pytest
 
-from src.general.exceptions import ServiceError
-from src.providers.filesystem.repositories import PrivateJWKRepository
-from src.services.jwk import JWKGenerationService
+from src.adapters.filesystem.repositories import FilePrivateJwkRepository
+from src.application.jwk import JWKGenerationService
+from src.domain.errors import ServiceError
 from tests.doubles import InMemoryRedis
 
 KEY_TTL_SECONDS = 3600
@@ -64,7 +64,7 @@ async def test_generate_jwk_publishes_new_key_when_store_is_empty(
     Then: приватный ключ записан в файл, а его публичная часть опубликована в кеше.
     """
     # Дано
-    key_file = key_store_dir / PrivateJWKRepository.FILE_NAME
+    key_file = key_store_dir / FilePrivateJwkRepository.FILE_NAME
     assert not key_file.exists()
 
     # Когда
@@ -101,7 +101,7 @@ async def test_generate_jwk_keeps_existing_key_when_it_is_published(
     """
     # Дано
     first = await jwk_service.generate_jwk(KEY_TTL_SECONDS)
-    key_file = key_store_dir / PrivateJWKRepository.FILE_NAME
+    key_file = key_store_dir / FilePrivateJwkRepository.FILE_NAME
     stored_values = dict(redis_double.values)
     stored_pem = key_file.read_bytes()
 
@@ -127,7 +127,7 @@ async def test_generate_jwk_republishes_existing_key_after_cache_loss(
     """
     # Дано
     first = await jwk_service.generate_jwk(KEY_TTL_SECONDS)
-    key_file = key_store_dir / PrivateJWKRepository.FILE_NAME
+    key_file = key_store_dir / FilePrivateJwkRepository.FILE_NAME
     stored_pem = key_file.read_bytes()
     redis_double.values.clear()
 
@@ -154,7 +154,7 @@ async def test_generate_jwk_overwrites_key_and_expires_previous_one(
     """
     # Дано
     first = await jwk_service.generate_jwk(KEY_TTL_SECONDS)
-    key_file = key_store_dir / PrivateJWKRepository.FILE_NAME
+    key_file = key_store_dir / FilePrivateJwkRepository.FILE_NAME
     stored_pem = key_file.read_bytes()
 
     # Когда
@@ -178,7 +178,7 @@ async def test_generate_jwk_rejects_key_file_with_foreign_algorithm(
     Then: он сообщает об ошибке, а не публикует несовместимый ключ.
     """
     # Дано
-    key_file = key_store_dir / PrivateJWKRepository.FILE_NAME
+    key_file = key_store_dir / FilePrivateJwkRepository.FILE_NAME
     key_file.parent.mkdir(parents=True, exist_ok=True)
     key_file.write_bytes(_rsa_pem())
 

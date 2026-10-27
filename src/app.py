@@ -5,12 +5,11 @@ from typing import Final
 from fastapi import FastAPI
 from loguru import logger
 
-from src.api import main_router
-from src.core.configs import config
-from src.rotation import get_rotation_daemon
-
-from .exc_handlers import register_exception_handlers
-from .middlewares import register_middlewares
+from src.bootstrap import get_rotation_daemon
+from src.config import config
+from src.interface import main_router
+from src.interface.exc_handlers import register_exception_handlers
+from src.interface.middlewares import register_middlewares
 
 APP_DESCRIPTION: Final[str] = """
 Сервер аутентификации для портала Airsoft-Prim.

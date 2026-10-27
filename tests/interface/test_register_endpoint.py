@@ -3,8 +3,7 @@
 from fastapi import status
 import pytest
 
-from src.general.exceptions import RepositoryError
-from src.services.user import UserAlreadyExistsError
+from src.domain.errors import RepositoryError, UserAlreadyExistsError
 from tests.interface.conftest import RegisterClientFactory, StubUserService
 
 REGISTER_PATH = "/auth/register"

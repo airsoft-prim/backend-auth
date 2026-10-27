@@ -2,9 +2,9 @@
 
 import pytest
 
-from src.general.enums import TokenType
-from src.general.exceptions import RepositoryError
-from src.providers.cache.repositories import RevokedTokensRepository
+from src.adapters.cache.repositories import RedisRevokedTokensRepository
+from src.domain.enums import TokenType
+from src.domain.errors import RepositoryError
 from tests.doubles import InMemoryRedis, as_redis
 
 TOKEN_ID = "token-under-test"  # noqa: S105
@@ -12,7 +12,7 @@ TTL_SECONDS = 3600
 
 
 async def test_store_writes_token_under_type_and_jti(
-    blacklisted_tokens_repository: RevokedTokensRepository,
+    blacklisted_tokens_repository: RedisRevokedTokensRepository,
     redis_double: InMemoryRedis,
 ) -> None:
     """Сохранение отозванного токена.
@@ -33,7 +33,7 @@ async def test_store_writes_token_under_type_and_jti(
 
 
 async def test_contains_reports_stored_token(
-    blacklisted_tokens_repository: RevokedTokensRepository,
+    blacklisted_tokens_repository: RedisRevokedTokensRepository,
 ) -> None:
     """Проверка отозванного токена.
 
@@ -52,7 +52,7 @@ async def test_contains_reports_stored_token(
 
 
 async def test_contains_reports_token_that_was_not_stored(
-    blacklisted_tokens_repository: RevokedTokensRepository,
+    blacklisted_tokens_repository: RedisRevokedTokensRepository,
 ) -> None:
     """Проверка действующего токена.
 
@@ -68,7 +68,7 @@ async def test_contains_reports_token_that_was_not_stored(
 
 
 async def test_access_and_refresh_tokens_with_same_id_are_independent(
-    blacklisted_tokens_repository: RevokedTokensRepository,
+    blacklisted_tokens_repository: RedisRevokedTokensRepository,
 ) -> None:
     """Разделение пространств access- и refresh-токенов.
 
@@ -87,7 +87,7 @@ async def test_access_and_refresh_tokens_with_same_id_are_independent(
 
 
 def test_compile_template_builds_key_with_type_and_jti(
-    blacklisted_tokens_repository: RevokedTokensRepository,
+    blacklisted_tokens_repository: RedisRevokedTokensRepository,
 ) -> None:
     """Сборка ключа Redis из шаблона.
 
@@ -111,7 +111,7 @@ async def test_store_translates_transport_failure_into_repository_error() -> Non
     Then: ошибка транспорта превращается в ошибку репозитория с понятным текстом.
     """
     # Дано
-    repository = RevokedTokensRepository(as_redis(InMemoryRedis(unavailable=True)))
+    repository = RedisRevokedTokensRepository(as_redis(InMemoryRedis(unavailable=True)))
 
     # Когда / Тогда
     with pytest.raises(RepositoryError, match="saving error"):
@@ -126,7 +126,7 @@ async def test_contains_translates_transport_failure_into_repository_error() -> 
     Then: ошибка транспорта превращается в ошибку репозитория с понятным текстом.
     """
     # Дано
-    repository = RevokedTokensRepository(as_redis(InMemoryRedis(unavailable=True)))
+    repository = RedisRevokedTokensRepository(as_redis(InMemoryRedis(unavailable=True)))
 
     # Когда / Тогда
     with pytest.raises(RepositoryError, match="getting error"):

@@ -13,9 +13,9 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.configs import config
-from src.providers.cache import StorageNumber, create_client
-from src.providers.database import BaseModel, engine
+from src.adapters.cache import StorageNumber, create_client
+from src.adapters.database import BaseModel, engine
+from src.config import config
 
 __all__ = ["database_session", "redis_client"]
 

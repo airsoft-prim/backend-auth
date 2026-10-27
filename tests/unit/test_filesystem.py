@@ -6,7 +6,7 @@ import stat
 
 import pytest
 
-from src.providers.filesystem import FileSystem
+from src.adapters.filesystem import FileSystem
 
 FILE_NAME = "key.pem"
 PAYLOAD = b"first key payload"

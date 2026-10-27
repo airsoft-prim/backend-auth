@@ -3,13 +3,13 @@
 from pwdlib import PasswordHash
 import pytest
 
-from src.general.enums import UserRole
-from src.providers.database.models import User
-from src.services.user import (
+from src.application.auth import UserService
+from src.domain.entities import User
+from src.domain.enums import UserRole
+from src.domain.errors import (
     UserAlreadyExistsError,
     UserAuthenticationError,
     UserIdentificationError,
-    UserService,
 )
 from tests.doubles import InMemoryUserRepository, as_user_repository
 
