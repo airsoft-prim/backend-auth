@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.adapters.database.repositories import SqlAlchemyUserRepository
-from src.application.auth import UserService
+from src.application.auth import RegisterUser
 from src.domain.entities import User
 from src.domain.enums import UserRole
 from src.domain.errors import RepositoryError, UserAlreadyExistsError
@@ -16,24 +16,27 @@ PASSWORD = "Str0ng!Pass"  # noqa: S105
 
 
 @pytest.fixture
-def service(database_session: AsyncSession, password_hash: PasswordHash) -> UserService:
-    """Отдаёт сервис учётных записей поверх настоящего репозитория.
+def register_user(
+    database_session: AsyncSession,
+    password_hash: PasswordHash,
+) -> RegisterUser:
+    """Отдаёт use case регистрации поверх настоящего репозитория.
 
     Args:
         database_session (AsyncSession): Сессия БД теста.
         password_hash (PasswordHash): Хешер паролей приложения.
 
     Returns:
-        UserService: Сервис, работающий с настоящей БД.
+        RegisterUser: Use case регистрации, работающий с настоящей БД.
     """
-    return UserService(
-        user_repository=SqlAlchemyUserRepository(database_session),
+    return RegisterUser(
+        users=SqlAlchemyUserRepository(database_session),
         hasher=password_hash,
     )
 
 
 async def test_registration_stores_hashed_account_in_database(
-    service: UserService,
+    register_user: RegisterUser,
     database_session: AsyncSession,
     password_hash: PasswordHash,
 ) -> None:
@@ -45,7 +48,7 @@ async def test_registration_stores_hashed_account_in_database(
     а пароль проверяется по сохранённому хешу.
     """
     # Когда
-    await service.register(username=USERNAME, email=EMAIL, password=PASSWORD)
+    await register_user(username=USERNAME, email=EMAIL, password=PASSWORD)
 
     # Тогда
     stored = await SqlAlchemyUserRepository(database_session).get_by_username(USERNAME)
@@ -62,7 +65,7 @@ async def test_registration_stores_hashed_account_in_database(
     assert stored.updated_at.tzinfo is not None
 
 
-async def test_registration_rejects_taken_credentials(service: UserService) -> None:
+async def test_registration_rejects_taken_credentials(register_user: RegisterUser) -> None:
     """Повторная регистрация.
 
     Given: учётная запись уже зарегистрирована,
@@ -70,14 +73,14 @@ async def test_registration_rejects_taken_credentials(service: UserService) -> N
     Then: сервис отказывает по каждому поводу.
     """
     # Дано
-    await service.register(username=USERNAME, email=EMAIL, password=PASSWORD)
+    await register_user(username=USERNAME, email=EMAIL, password=PASSWORD)
 
     # Когда / Тогда
     with pytest.raises(UserAlreadyExistsError, match=r"Username is already taken\."):
-        await service.register(username=USERNAME, email="other@airsoft-prim.ru", password=PASSWORD)
+        await register_user(username=USERNAME, email="other@airsoft-prim.ru", password=PASSWORD)
 
     with pytest.raises(UserAlreadyExistsError, match=r"Email is already taken\."):
-        await service.register(username="another_2010", email=EMAIL.upper(), password=PASSWORD)
+        await register_user(username="another_2010", email=EMAIL.upper(), password=PASSWORD)
 
 
 async def test_database_keeps_email_unique_regardless_of_case(

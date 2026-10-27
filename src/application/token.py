@@ -10,8 +10,15 @@ from jwt import PyJWK
 from src.application.security import SIGNING_ALGORITHM, key_to_jwk
 from src.domain.entities import AccessTokenClaims
 from src.domain.enums import TokenType
-from src.domain.errors import JWTDecryptionError, JWTEncryptionError, TokenRevokedError
+from src.domain.errors import (
+    JWTDecryptionError,
+    JWTEncryptionError,
+    TokenRevokedError,
+    UserAuthorizationError,
+)
 from src.domain.ports import PrivateJwkRepository, PublicJwkRepository, RevokedTokensRepository
+
+from ._base import AbstractUseCase
 
 TOKEN_TYPE: Final[str] = "JWT"  # noqa: S105
 
@@ -19,8 +26,8 @@ TOKEN_TYPE: Final[str] = "JWT"  # noqa: S105
 REQUIRED_CLAIMS: Final[tuple[str, ...]] = ("iss", "sub", "aud", "exp", "iat", "jti")
 
 
-class JWTEncryptionService:
-    """Сервис выпуска подписанных JWT-токенов."""
+class IssueAccessToken(AbstractUseCase):
+    """Use case выпуска подписанных JWT-токенов."""
 
     def __init__(
         self,
@@ -33,7 +40,7 @@ class JWTEncryptionService:
         """Инициализация класса.
 
         Args:
-            private_key_repository (PrivateJwkRepository): Репозиторий приватного ключа подписи.
+            private_key_repository (PrivateJwkRepository): Порт приватного ключа подписи.
             issuer (str): Издатель токена — claim `iss`.
             audience (str): Аудитория по умолчанию — claim `aud`.
             ttl (int): Срок жизни токена в секундах по умолчанию.
@@ -43,7 +50,7 @@ class JWTEncryptionService:
         self._audience = audience
         self._ttl = ttl
 
-    async def encrypt(
+    async def __call__(
         self,
         subject: int | str,
         subject_role: str | None = None,
@@ -129,8 +136,8 @@ class JWTEncryptionService:
         return private_key
 
 
-class JWTDecryptionService:
-    """Сервис проверки подписанных JWT-токенов."""
+class VerifyAccessToken(AbstractUseCase):
+    """Use case проверки подписанных JWT-токенов."""
 
     def __init__(
         self,
@@ -142,7 +149,7 @@ class JWTDecryptionService:
         """Инициализация класса.
 
         Args:
-            public_key_repository (PublicJwkRepository): Репозиторий опубликованных публичных JWK.
+            public_key_repository (PublicJwkRepository): Порт опубликованных публичных JWK.
             issuer (str): Ожидаемый издатель токена — claim `iss`.
             audience (str): Ожидаемая аудитория по умолчанию — claim `aud`.
         """
@@ -150,7 +157,7 @@ class JWTDecryptionService:
         self._issuer = issuer
         self._audience = audience
 
-    async def decrypt(self, token: str, *, audience: str | None = None) -> AccessTokenClaims:
+    async def __call__(self, token: str, *, audience: str | None = None) -> AccessTokenClaims:
         """Проверяет access-токен и возвращает его claims.
 
         Args:
@@ -216,18 +223,18 @@ class JWTDecryptionService:
         return key_id
 
 
-class TokenRevocationService:
-    """Сервис отзыва выданных токенов и проверки отзыва при аутентификации."""
+class EnsureTokenActive(AbstractUseCase):
+    """Use case проверки, что токен не отозван."""
 
-    def __init__(self, repository: RevokedTokensRepository) -> None:
+    def __init__(self, tokens: RevokedTokensRepository) -> None:
         """Инициализация класса.
 
         Args:
-            repository (RevokedTokensRepository): Репозиторий отозванных токенов.
+            tokens (RevokedTokensRepository): Порт доступа к отозванным токенам.
         """
-        self._repository = repository
+        self._tokens = tokens
 
-    async def ensure_active(
+    async def __call__(
         self, claims: AccessTokenClaims, token_type: TokenType = TokenType.ACCESS
     ) -> None:
         """Проверяет, что токен не отозван.
@@ -239,11 +246,23 @@ class TokenRevocationService:
         Raises:
             TokenRevokedError: Токен уже помечен отозванным.
         """
-        if await self._repository.check(token_type, claims["jti"]):
+        if await self._tokens.check(token_type, claims["jti"]):
             msg = "Token is revoked."
             raise TokenRevokedError(msg) from None
 
-    async def revoke(
+
+class RevokeToken(AbstractUseCase):
+    """Use case отзыва выданного токена."""
+
+    def __init__(self, tokens: RevokedTokensRepository) -> None:
+        """Инициализация класса.
+
+        Args:
+            tokens (RevokedTokensRepository): Порт доступа к отозванным токенам.
+        """
+        self._tokens = tokens
+
+    async def __call__(
         self, claims: AccessTokenClaims, token_type: TokenType = TokenType.ACCESS
     ) -> None:
         """Помечает токен отозванным до истечения его срока действия.
@@ -258,4 +277,41 @@ class TokenRevocationService:
         if (ttl := claims["exp"] - int(datetime.now(UTC).timestamp())) <= 0:
             return
 
-        await self._repository.store(token_type, claims["jti"], ttl)
+        await self._tokens.store(token_type, claims["jti"], ttl)
+
+
+class Authorize(AbstractUseCase):
+    """Use case авторизации запроса по Bearer-токену."""
+
+    def __init__(self, verify: VerifyAccessToken, ensure_active: EnsureTokenActive) -> None:
+        """Инициализация класса.
+
+        Args:
+            verify (VerifyAccessToken): Use case проверки JWT-токена.
+            ensure_active (EnsureTokenActive): Use case проверки отзыва токена.
+        """
+        self._verify = verify
+        self._ensure_active = ensure_active
+
+    async def __call__(self, token: str | None) -> AccessTokenClaims:
+        """Проверяет Bearer-токен и возвращает его claims.
+
+        Args:
+            token (str | None): Токен из заголовка `Authorization` или None, если
+                заголовок отсутствует.
+
+        Raises:
+            UserAuthorizationError: Токен не передан.
+            JWTDecryptionError: Токен недействителен, просрочен или уже отозван.
+
+        Returns:
+            AccessTokenClaims: Проверенные claims токена.
+        """
+        if token is None:
+            msg = "Bearer token is missing."
+            raise UserAuthorizationError(msg)
+
+        claims = await self._verify(token)
+        await self._ensure_active(claims)
+
+        return claims

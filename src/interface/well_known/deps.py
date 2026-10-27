@@ -5,17 +5,20 @@ from redis.asyncio import Redis
 
 from src.adapters.cache import StorageNumber, get_bounded_client
 from src.adapters.cache.repositories import RedisPublicJwkRepository
-from src.application.jwk import JWKPublishingService
+from src.application.jwk import CollectJwks
 
 
-async def get_jwk_publishing_service(
+async def get_collect_jwks(
     client: Annotated[Redis, Depends(get_bounded_client(StorageNumber.KEYS.value))],
-) -> JWKPublishingService:
-    """Предоставляет сервис публикации публичных JWK на время запроса.
+) -> CollectJwks:
+    """Предоставляет use case сбора публичных JWK на время запроса.
 
     Клиент Redis берётся из пула БД публичных ключей и закрывается вместе с запросом.
 
+    Args:
+        client (Redis): Клиент Redis с опубликованными публичными JWK.
+
     Returns:
-        JWKPublishingService: Сервис, привязанный к кешу публичных ключей.
+        CollectJwks: Use case, привязанный к кешу публичных ключей.
     """
-    return JWKPublishingService(jwk_repository=RedisPublicJwkRepository(client))
+    return CollectJwks(RedisPublicJwkRepository(client))

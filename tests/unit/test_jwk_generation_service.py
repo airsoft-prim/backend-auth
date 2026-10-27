@@ -11,7 +11,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey,
 import pytest
 
 from src.adapters.filesystem.repositories import FilePrivateJwkRepository
-from src.application.jwk import JWKGenerationService
+from src.application.jwk import RotateJwk
 from src.domain.errors import ServiceError
 from tests.doubles import InMemoryRedis
 
@@ -53,7 +53,7 @@ def _encode_public_key(public_key: Ed25519PublicKey) -> str:
 
 
 async def test_generate_jwk_publishes_new_key_when_store_is_empty(
-    jwk_service: JWKGenerationService,
+    rotate_jwk: RotateJwk,
     key_store_dir: Path,
     redis_double: InMemoryRedis,
 ) -> None:
@@ -68,7 +68,7 @@ async def test_generate_jwk_publishes_new_key_when_store_is_empty(
     assert not key_file.exists()
 
     # Когда
-    published = await jwk_service.generate_jwk(KEY_TTL_SECONDS)
+    published = await rotate_jwk(KEY_TTL_SECONDS)
 
     # Тогда
     assert key_file.exists()
@@ -89,7 +89,7 @@ async def test_generate_jwk_publishes_new_key_when_store_is_empty(
 
 
 async def test_generate_jwk_keeps_existing_key_when_it_is_published(
-    jwk_service: JWKGenerationService,
+    rotate_jwk: RotateJwk,
     key_store_dir: Path,
     redis_double: InMemoryRedis,
 ) -> None:
@@ -100,13 +100,13 @@ async def test_generate_jwk_keeps_existing_key_when_it_is_published(
     Then: ключ не перегенерируется: файл и кеш остаются прежними.
     """
     # Дано
-    first = await jwk_service.generate_jwk(KEY_TTL_SECONDS)
+    first = await rotate_jwk(KEY_TTL_SECONDS)
     key_file = key_store_dir / FilePrivateJwkRepository.FILE_NAME
     stored_values = dict(redis_double.values)
     stored_pem = key_file.read_bytes()
 
     # Когда
-    second = await jwk_service.generate_jwk(KEY_TTL_SECONDS)
+    second = await rotate_jwk(KEY_TTL_SECONDS)
 
     # Тогда
     assert second.key_id == first.key_id
@@ -115,7 +115,7 @@ async def test_generate_jwk_keeps_existing_key_when_it_is_published(
 
 
 async def test_generate_jwk_republishes_existing_key_after_cache_loss(
-    jwk_service: JWKGenerationService,
+    rotate_jwk: RotateJwk,
     key_store_dir: Path,
     redis_double: InMemoryRedis,
 ) -> None:
@@ -126,13 +126,13 @@ async def test_generate_jwk_republishes_existing_key_after_cache_loss(
     Then: ключ не перегенерируется, а его публичная часть публикуется заново.
     """
     # Дано
-    first = await jwk_service.generate_jwk(KEY_TTL_SECONDS)
+    first = await rotate_jwk(KEY_TTL_SECONDS)
     key_file = key_store_dir / FilePrivateJwkRepository.FILE_NAME
     stored_pem = key_file.read_bytes()
     redis_double.values.clear()
 
     # Когда
-    second = await jwk_service.generate_jwk(KEY_TTL_SECONDS)
+    second = await rotate_jwk(KEY_TTL_SECONDS)
 
     # Тогда
     assert second.key_id == first.key_id
@@ -142,7 +142,7 @@ async def test_generate_jwk_republishes_existing_key_after_cache_loss(
 
 
 async def test_generate_jwk_overwrites_key_and_expires_previous_one(
-    jwk_service: JWKGenerationService,
+    rotate_jwk: RotateJwk,
     key_store_dir: Path,
     redis_double: InMemoryRedis,
 ) -> None:
@@ -153,12 +153,12 @@ async def test_generate_jwk_overwrites_key_and_expires_previous_one(
     Then: появляется новый ключ, а прошлый публичный JWK получает время жизни.
     """
     # Дано
-    first = await jwk_service.generate_jwk(KEY_TTL_SECONDS)
+    first = await rotate_jwk(KEY_TTL_SECONDS)
     key_file = key_store_dir / FilePrivateJwkRepository.FILE_NAME
     stored_pem = key_file.read_bytes()
 
     # Когда
-    second = await jwk_service.generate_jwk(KEY_TTL_SECONDS, overwrite=True)
+    second = await rotate_jwk(KEY_TTL_SECONDS, overwrite=True)
 
     # Тогда
     assert second.key_id != first.key_id
@@ -168,7 +168,7 @@ async def test_generate_jwk_overwrites_key_and_expires_previous_one(
 
 
 async def test_generate_jwk_rejects_key_file_with_foreign_algorithm(
-    jwk_service: JWKGenerationService,
+    rotate_jwk: RotateJwk,
     key_store_dir: Path,
 ) -> None:
     """Ключ чужого алгоритма в файле.
@@ -184,11 +184,11 @@ async def test_generate_jwk_rejects_key_file_with_foreign_algorithm(
 
     # Когда / Тогда
     with pytest.raises(ServiceError, match="does not contain an Ed25519 key"):
-        await jwk_service.generate_jwk(KEY_TTL_SECONDS)
+        await rotate_jwk(KEY_TTL_SECONDS)
 
 
 async def test_published_key_id_is_rfc7638_thumbprint(
-    jwk_service: JWKGenerationService,
+    rotate_jwk: RotateJwk,
     redis_double: InMemoryRedis,
 ) -> None:
     """Идентификатор ключа.
@@ -198,7 +198,7 @@ async def test_published_key_id_is_rfc7638_thumbprint(
     Then: его `kid` — отпечаток ключа по RFC 7638, а не произвольное значение.
     """
     # Дано / Когда
-    published = await jwk_service.generate_jwk(KEY_TTL_SECONDS)
+    published = await rotate_jwk(KEY_TTL_SECONDS)
 
     # Тогда
     jwk = json.loads(redis_double.values[f"jwk:{published.key_id}"])

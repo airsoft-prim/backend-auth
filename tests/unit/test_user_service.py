@@ -3,7 +3,7 @@
 from pwdlib import PasswordHash
 import pytest
 
-from src.application.auth import UserService
+from src.application.auth import GetUser, LoginUser, RegisterUser
 from src.domain.entities import User
 from src.domain.enums import UserRole
 from src.domain.errors import (
@@ -30,20 +30,47 @@ def repository() -> InMemoryUserRepository:
 
 
 @pytest.fixture
-def service(repository: InMemoryUserRepository, password_hash: PasswordHash) -> UserService:
-    """Отдаёт сервис учётных записей поверх подмены репозитория.
+def register_user(
+    repository: InMemoryUserRepository,
+    password_hash: PasswordHash,
+) -> RegisterUser:
+    """Отдаёт use case регистрации поверх подмены репозитория.
 
     Args:
         repository (InMemoryUserRepository): Подмена репозитория.
         password_hash (PasswordHash): Хешер паролей приложения.
 
     Returns:
-        UserService: Сервис учётных записей.
+        RegisterUser: Use case регистрации учётной записи.
     """
-    return UserService(
-        user_repository=as_user_repository(repository),
-        hasher=password_hash,
-    )
+    return RegisterUser(users=as_user_repository(repository), hasher=password_hash)
+
+
+@pytest.fixture
+def login_user(repository: InMemoryUserRepository, password_hash: PasswordHash) -> LoginUser:
+    """Отдаёт use case входа поверх подмены репозитория.
+
+    Args:
+        repository (InMemoryUserRepository): Подмена репозитория.
+        password_hash (PasswordHash): Хешер паролей приложения.
+
+    Returns:
+        LoginUser: Use case входа пользователя.
+    """
+    return LoginUser(users=as_user_repository(repository), hasher=password_hash)
+
+
+@pytest.fixture
+def get_user(repository: InMemoryUserRepository) -> GetUser:
+    """Отдаёт use case получения учётной записи поверх подмены репозитория.
+
+    Args:
+        repository (InMemoryUserRepository): Подмена репозитория.
+
+    Returns:
+        GetUser: Use case получения учётной записи.
+    """
+    return GetUser(users=as_user_repository(repository))
 
 
 def _stored_account(
@@ -79,7 +106,7 @@ def _stored_account(
 
 
 async def test_register_stores_account_with_hashed_password(
-    service: UserService,
+    register_user: RegisterUser,
     repository: InMemoryUserRepository,
     password_hash: PasswordHash,
 ) -> None:
@@ -90,7 +117,7 @@ async def test_register_stores_account_with_hashed_password(
     Then: учётная запись сохранена, а пароль лежит только в виде Argon2id-хеша.
     """
     # Когда
-    await service.register(username=USERNAME, email=EMAIL, password=PASSWORD)
+    await register_user(username=USERNAME, email=EMAIL, password=PASSWORD)
 
     # Тогда
     assert len(repository.users) == 1
@@ -104,7 +131,7 @@ async def test_register_stores_account_with_hashed_password(
 
 
 async def test_register_rejects_login_that_is_taken(
-    service: UserService,
+    register_user: RegisterUser,
     repository: InMemoryUserRepository,
 ) -> None:
     """Занятый логин.
@@ -118,13 +145,13 @@ async def test_register_rejects_login_that_is_taken(
 
     # Когда / Тогда
     with pytest.raises(UserAlreadyExistsError, match=r"Username is already taken\."):
-        await service.register(username=USERNAME, email="other@airsoft-prim.ru", password=PASSWORD)
+        await register_user(username=USERNAME, email="other@airsoft-prim.ru", password=PASSWORD)
 
     assert len(repository.users) == 1
 
 
 async def test_register_rejects_email_that_is_taken_in_any_case(
-    service: UserService,
+    register_user: RegisterUser,
     repository: InMemoryUserRepository,
 ) -> None:
     """Занятый адрес в другом регистре.
@@ -138,13 +165,13 @@ async def test_register_rejects_email_that_is_taken_in_any_case(
 
     # Когда / Тогда
     with pytest.raises(UserAlreadyExistsError, match=r"Email is already taken\."):
-        await service.register(username="another_2010", email=EMAIL.upper(), password=PASSWORD)
+        await register_user(username="another_2010", email=EMAIL.upper(), password=PASSWORD)
 
     assert len(repository.users) == 1
 
 
 async def test_register_keeps_logins_case_sensitive(
-    service: UserService,
+    register_user: RegisterUser,
     repository: InMemoryUserRepository,
 ) -> None:
     """Логин в другом регистре.
@@ -159,14 +186,14 @@ async def test_register_keeps_logins_case_sensitive(
     )
 
     # Когда
-    await service.register(username=USERNAME, email=EMAIL, password=PASSWORD)
+    await register_user(username=USERNAME, email=EMAIL, password=PASSWORD)
 
     # Тогда
     assert [account.username for account in repository.users] == ["Stalker_2010", USERNAME]
 
 
 async def test_get_account_returns_stored_user(
-    service: UserService,
+    get_user: GetUser,
     repository: InMemoryUserRepository,
 ) -> None:
     """Получение учётной записи по идентификатору.
@@ -180,13 +207,13 @@ async def test_get_account_returns_stored_user(
     repository.users.append(account)
 
     # Когда
-    found = await service.get_account(USER_ID)
+    found = await get_user(USER_ID)
 
     # Тогда
     assert found is account
 
 
-async def test_get_account_rejects_unknown_user(service: UserService) -> None:
+async def test_get_account_rejects_unknown_user(get_user: GetUser) -> None:
     """Получение несуществующей учётной записи.
 
     Given: учётной записи с таким Id нет в репозитории,
@@ -195,11 +222,11 @@ async def test_get_account_rejects_unknown_user(service: UserService) -> None:
     """
     # Когда / Тогда
     with pytest.raises(UserIdentificationError, match="User not found"):
-        await service.get_account(USER_ID)
+        await get_user(USER_ID)
 
 
 async def test_login_returns_user_id_and_role(
-    service: UserService,
+    login_user: LoginUser,
     repository: InMemoryUserRepository,
     password_hash: PasswordHash,
 ) -> None:
@@ -218,14 +245,14 @@ async def test_login_returns_user_id_and_role(
     )
 
     # Когда
-    subject, role = await service.login(USERNAME, PASSWORD)
+    subject, role = await login_user(USERNAME, PASSWORD)
 
     # Тогда
     assert subject == USER_ID
     assert role == UserRole.MODERATOR
 
 
-async def test_login_rejects_unknown_user(service: UserService) -> None:
+async def test_login_rejects_unknown_user(login_user: LoginUser) -> None:
     """Вход с несуществующим логином.
 
     Given: учётной записи с таким логином нет,
@@ -234,11 +261,11 @@ async def test_login_rejects_unknown_user(service: UserService) -> None:
     """
     # Когда / Тогда
     with pytest.raises(UserIdentificationError, match="User not found"):
-        await service.login(USERNAME, PASSWORD)
+        await login_user(USERNAME, PASSWORD)
 
 
 async def test_login_rejects_wrong_password(
-    service: UserService,
+    login_user: LoginUser,
     repository: InMemoryUserRepository,
     password_hash: PasswordHash,
 ) -> None:
@@ -253,11 +280,11 @@ async def test_login_rejects_wrong_password(
 
     # Когда / Тогда
     with pytest.raises(UserAuthenticationError, match="Password is incorrect"):
-        await service.login(USERNAME, "Wrong1!Pass")
+        await login_user(USERNAME, "Wrong1!Pass")
 
 
 async def test_login_rejects_disabled_user(
-    service: UserService,
+    login_user: LoginUser,
     repository: InMemoryUserRepository,
     password_hash: PasswordHash,
 ) -> None:
@@ -277,4 +304,4 @@ async def test_login_rejects_disabled_user(
 
     # Когда / Тогда
     with pytest.raises(UserIdentificationError, match="User not found"):
-        await service.login(USERNAME, PASSWORD)
+        await login_user(USERNAME, PASSWORD)

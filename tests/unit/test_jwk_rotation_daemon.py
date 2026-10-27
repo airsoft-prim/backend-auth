@@ -7,7 +7,7 @@ from typing import cast
 import pytest
 
 from src.adapters.filesystem.repositories import FilePrivateJwkRepository
-from src.application.jwk import JWKGenerationService
+from src.application.jwk import RotateJwk
 from src.scheduler.daemon import JWKRotationDaemon
 from tests.doubles import InMemoryRedis
 from tests.unit.conftest import (
@@ -23,7 +23,7 @@ PUBLISHED_KEYS_AFTER_ROTATION = 2
 
 async def test_daemon_rotates_key_immediately_on_start(
     monkeypatch: pytest.MonkeyPatch,
-    jwk_service: JWKGenerationService,
+    rotate_jwk: RotateJwk,
     key_store_dir: Path,
     redis_double: InMemoryRedis,
 ) -> None:
@@ -36,7 +36,7 @@ async def test_daemon_rotates_key_immediately_on_start(
     # Дано
     delays = patch_daemon_sleep(monkeypatch, rotations=1)
     event_loop = RecordingEventLoop()
-    daemon = JWKRotationDaemon(jwk_service, CRON_RULE, event_loop=cast("EventLoop", event_loop))
+    daemon = JWKRotationDaemon(rotate_jwk, CRON_RULE, event_loop=cast("EventLoop", event_loop))
 
     # Когда
     daemon.start()
@@ -51,7 +51,7 @@ async def test_daemon_rotates_key_immediately_on_start(
 
 async def test_daemon_overwrites_key_and_expires_previous_public_key(
     monkeypatch: pytest.MonkeyPatch,
-    jwk_service: JWKGenerationService,
+    rotate_jwk: RotateJwk,
     key_store_dir: Path,
     redis_double: InMemoryRedis,
 ) -> None:
@@ -64,12 +64,12 @@ async def test_daemon_overwrites_key_and_expires_previous_public_key(
     """
     # Дано
     key_file = key_store_dir / FilePrivateJwkRepository.FILE_NAME
-    previous = await jwk_service.generate_jwk(DAY_IN_SECONDS)
+    previous = await rotate_jwk(DAY_IN_SECONDS)
     previous_key_file = key_file.read_bytes()
 
     delays = patch_daemon_sleep(monkeypatch, rotations=2)
     event_loop = RecordingEventLoop()
-    daemon = JWKRotationDaemon(jwk_service, CRON_RULE, event_loop=cast("EventLoop", event_loop))
+    daemon = JWKRotationDaemon(rotate_jwk, CRON_RULE, event_loop=cast("EventLoop", event_loop))
 
     # Когда
     daemon.start()
@@ -85,7 +85,7 @@ async def test_daemon_overwrites_key_and_expires_previous_public_key(
 
 async def test_daemon_takes_running_loop_when_loop_is_not_given(
     monkeypatch: pytest.MonkeyPatch,
-    jwk_service: JWKGenerationService,
+    rotate_jwk: RotateJwk,
     key_store_dir: Path,
     redis_double: InMemoryRedis,
 ) -> None:
@@ -99,7 +99,7 @@ async def test_daemon_takes_running_loop_when_loop_is_not_given(
     # Дано: цикл не передан, поэтому демон должен взять текущий
     patch_daemon_sleep(monkeypatch, rotations=1)
     event_loop = RecordingEventLoop()
-    daemon = JWKRotationDaemon(jwk_service, CRON_RULE)
+    daemon = JWKRotationDaemon(rotate_jwk, CRON_RULE)
 
     # Когда
     with monkeypatch.context() as patch:

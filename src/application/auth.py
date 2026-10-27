@@ -1,68 +1,28 @@
-from src.domain.entities import AccessTokenClaims, User
+from src.domain.entities import User
 from src.domain.errors import (
     UserAlreadyExistsError,
     UserAuthenticationError,
-    UserAuthorizationError,
     UserIdentificationError,
 )
 from src.domain.ports import PasswordHasher, UserRepository
 
-from .token import JWTDecryptionService, TokenRevocationService
+from ._base import AbstractUseCase
 
 
-class AuthorizationService:
-    """Сервис авторизации запроса по Bearer-токену."""
+class RegisterUser(AbstractUseCase):
+    """Use case регистрации учётной записи портала."""
 
-    def __init__(
-        self, decryption_service: JWTDecryptionService, revocation_service: TokenRevocationService
-    ) -> None:
+    def __init__(self, users: UserRepository, hasher: PasswordHasher) -> None:
         """Инициализация класса.
 
         Args:
-            decryption_service (JWTDecryptionService): Сервис проверки JWT токенов.
-            revocation_service (TokenRevocationService): Сервис проверки отзыва токенов.
+            users (UserRepository): Порт доступа к учётным записям.
+            hasher (PasswordHasher): Порт хеширования паролей (argon2, `pwdlib[argon2]`).
         """
-        self._decryption = decryption_service
-        self._revocation = revocation_service
-
-    async def authorize(self, token: str | None) -> AccessTokenClaims:
-        """Проверяет Bearer-токен и возвращает его claims.
-
-        Args:
-            token (str | None): Токен из заголовка `Authorization` или None, если
-                заголовок отсутствует.
-
-        Raises:
-            UserAuthorizationError: Токен не передан.
-            JWTDecryptionError: Токен недействителен, просрочен или уже отозван.
-
-        Returns:
-            AccessTokenClaims: Проверенные claims токена.
-        """
-        if token is None:
-            msg = "Bearer token is missing."
-            raise UserAuthorizationError(msg)
-
-        claims = await self._decryption.decrypt(token)
-        await self._revocation.ensure_active(claims)
-
-        return claims
-
-
-class UserService:
-    """Сервис учётных записей портала."""
-
-    def __init__(self, user_repository: UserRepository, hasher: PasswordHasher) -> None:
-        """Инициализация класса.
-
-        Args:
-            user_repository (UserRepository): Репозиторий учётных записей.
-            hasher (PasswordHasher): Хешер паролей (argon2, `pwdlib[argon2]`).
-        """
-        self._users = user_repository
+        self._users = users
         self._hasher = hasher
 
-    async def register(self, username: str, email: str, password: str) -> None:
+    async def __call__(self, username: str, email: str, password: str) -> None:
         """Регистрирует учётную запись портала.
 
         Пароль приходит в открытом виде и сохраняется только в виде Argon2id-хеша.
@@ -88,27 +48,21 @@ class UserService:
 
         await self._users.save(user)
 
-    async def get_account(self, user_id: int) -> User:
-        """Возвращает учётную запись по её идентификатору.
+
+class LoginUser(AbstractUseCase):
+    """Use case входа пользователя в систему."""
+
+    def __init__(self, users: UserRepository, hasher: PasswordHasher) -> None:
+        """Инициализация класса.
 
         Args:
-            user_id (int): Идентификатор учётной записи.
-
-        Raises:
-            UserIdentificationError: Учётная запись не найдена.
-
-        Returns:
-            User: Найденная учётная запись.
+            users (UserRepository): Порт доступа к учётным записям.
+            hasher (PasswordHasher): Порт хеширования паролей (argon2, `pwdlib[argon2]`).
         """
-        user = await self._users.get(user_id)
+        self._users = users
+        self._hasher = hasher
 
-        if user is None:
-            msg = "User not found."
-            raise UserIdentificationError(msg) from None
-
-        return user
-
-    async def login(self, username: str, password: str) -> tuple[int, str]:
+    async def __call__(self, username: str, password: str) -> tuple[int, str]:
         """Выполняет вход пользователя в систему.
 
         Args:
@@ -136,3 +90,35 @@ class UserService:
             raise UserIdentificationError(msg) from None
 
         return user.id, user.system_role
+
+
+class GetUser(AbstractUseCase):
+    """Use case получения учётной записи по её идентификатору."""
+
+    def __init__(self, users: UserRepository) -> None:
+        """Инициализация класса.
+
+        Args:
+            users (UserRepository): Порт доступа к учётным записям.
+        """
+        self._users = users
+
+    async def __call__(self, user_id: int) -> User:
+        """Возвращает учётную запись по её идентификатору.
+
+        Args:
+            user_id (int): Идентификатор учётной записи.
+
+        Raises:
+            UserIdentificationError: Учётная запись не найдена.
+
+        Returns:
+            User: Найденная учётная запись.
+        """
+        user = await self._users.get(user_id)
+
+        if user is None:
+            msg = "User not found."
+            raise UserIdentificationError(msg) from None
+
+        return user

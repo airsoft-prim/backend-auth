@@ -6,7 +6,7 @@ from itertools import pairwise
 from croniter import croniter
 from loguru import logger
 
-from src.application.jwk import JWKGenerationService
+from src.application.jwk import RotateJwk
 
 
 class JWKRotationDaemon:
@@ -20,7 +20,7 @@ class JWKRotationDaemon:
 
     def __init__(
         self,
-        jwk_service: JWKGenerationService,
+        rotate_jwk: RotateJwk,
         cron_rule: str,
         initial_overwrite: bool = False,
         *,
@@ -29,7 +29,7 @@ class JWKRotationDaemon:
         """Инициализация класса.
 
         Args:
-            jwk_service (JWKGenerationService): Сервис генерации и публикации JWK.
+            rotate_jwk (RotateJwk): Use case генерации и ротации JWK.
             cron_rule (str): Cron-правило расписания, по которому рассчитываются моменты
                 ротации.
             initial_overwrite (bool, optional): Признак перезаписи приватного JWK при первом
@@ -44,7 +44,7 @@ class JWKRotationDaemon:
         self._rotation_clock = croniter(cron_rule, self._current_time(), ret_type=datetime)
         self._event_loop = event_loop
 
-        self._jwk_service = jwk_service
+        self._rotate_jwk = rotate_jwk
 
         self._initial_overwrite = initial_overwrite
         self._first_iteration = True
@@ -104,4 +104,4 @@ class JWKRotationDaemon:
             logger.info("Rotating previosly generated Private JWK...")
             overwrite = True
 
-        await self._jwk_service.generate_jwk(rotated_ttl, overwrite=overwrite)
+        await self._rotate_jwk(rotated_ttl, overwrite=overwrite)

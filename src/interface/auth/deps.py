@@ -15,43 +15,71 @@ from src.adapters.database import get_session
 from src.adapters.database.repositories import SqlAlchemyUserRepository
 from src.adapters.filesystem import FileSystem
 from src.adapters.filesystem.repositories import FilePrivateJwkRepository
-from src.application.auth import AuthorizationService, UserService
+from src.application.auth import GetUser, LoginUser, RegisterUser
 from src.application.token import (
-    JWTDecryptionError,
-    JWTDecryptionService,
-    JWTEncryptionService,
-    TokenRevocationService,
+    Authorize,
+    EnsureTokenActive,
+    IssueAccessToken,
+    RevokeToken,
+    VerifyAccessToken,
 )
 from src.config import config
 from src.domain.entities import AccessTokenClaims, User
+from src.domain.errors import JWTDecryptionError
 from src.interface._protection import schema
 
 
-async def get_user_service(
+async def get_register_user(
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> UserService:
-    """Предоставляет сервис учётных записей на время запроса.
-
-    Сессия БД живёт вместе с запросом: коммит делает репозиторий при сохранении.
+) -> RegisterUser:
+    """Предоставляет use case регистрации на время запроса.
 
     Args:
         session (AsyncSession): Асинхронная сессия БД.
 
     Returns:
-        UserService: Сервис учётных записей, привязанный к сессии запроса.
+        RegisterUser: Use case регистрации, привязанный к сессии запроса.
     """
-    return UserService(SqlAlchemyUserRepository(session), hasher=PASSWORD_HASHER)
+    return RegisterUser(SqlAlchemyUserRepository(session), hasher=PASSWORD_HASHER)
 
 
-async def get_encryption_service() -> JWTEncryptionService:
-    """Предоставляет сервис выпуска JWT токенов для открытия новой сессии пользователя.
+async def get_login_user(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> LoginUser:
+    """Предоставляет use case входа на время запроса.
+
+    Args:
+        session (AsyncSession): Асинхронная сессия БД.
 
     Returns:
-        JWTEncryptionService: Сервис выпуска JWT токенов.
+        LoginUser: Use case входа, привязанный к сессии запроса.
+    """
+    return LoginUser(SqlAlchemyUserRepository(session), hasher=PASSWORD_HASHER)
+
+
+async def get_user(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> GetUser:
+    """Предоставляет use case получения учётной записи на время запроса.
+
+    Args:
+        session (AsyncSession): Асинхронная сессия БД.
+
+    Returns:
+        GetUser: Use case получения учётной записи по идентификатору.
+    """
+    return GetUser(SqlAlchemyUserRepository(session))
+
+
+async def get_issue_access_token() -> IssueAccessToken:
+    """Предоставляет use case выпуска access-токена.
+
+    Returns:
+        IssueAccessToken: Use case выпуска JWT-токена.
     """
     private_key_repo = FilePrivateJwkRepository(FileSystem(config.security.KEY_STORE_DIRECTORY))
 
-    return JWTEncryptionService(
+    return IssueAccessToken(
         private_key_repository=private_key_repo,
         issuer=config.app.NAME,
         audience=config.app.PROJECT,
@@ -59,63 +87,78 @@ async def get_encryption_service() -> JWTEncryptionService:
     )
 
 
-async def get_decryption_service(
+async def get_verify_access_token(
     client: Annotated[Redis, Depends(get_bounded_client(StorageNumber.KEYS.value))],
-) -> JWTDecryptionService:
-    """Предоставляет сервис проверки JWT токенов на время запроса.
+) -> VerifyAccessToken:
+    """Предоставляет use case проверки access-токена на время запроса.
 
     Args:
         client (Redis): Клиент Redis с опубликованными публичными JWK.
 
     Returns:
-        JWTDecryptionService: Сервис проверки JWT токенов.
+        VerifyAccessToken: Use case проверки JWT-токена.
     """
-    return JWTDecryptionService(
+    return VerifyAccessToken(
         public_key_repository=RedisPublicJwkRepository(client),
         issuer=config.app.NAME,
         audience=config.app.PROJECT,
     )
 
 
-async def get_token_revocation_service(
+async def get_ensure_token_active(
     client: Annotated[Redis, Depends(get_bounded_client(StorageNumber.TOKENS.value))],
-) -> TokenRevocationService:
-    """Предоставляет сервис отзыва токенов на время запроса.
+) -> EnsureTokenActive:
+    """Предоставляет use case проверки отзыва токена на время запроса.
 
     Args:
         client (Redis): Клиент Redis с отозванными токенами.
 
     Returns:
-        TokenRevocationService: Сервис отзыва токенов.
+        EnsureTokenActive: Use case проверки, что токен не отозван.
     """
-    return TokenRevocationService(RedisRevokedTokensRepository(client))
+    return EnsureTokenActive(RedisRevokedTokensRepository(client))
 
 
-async def get_authorization_service(
-    decryption_service: Annotated[JWTDecryptionService, Depends(get_decryption_service)],
-    revocation_service: Annotated[TokenRevocationService, Depends(get_token_revocation_service)],
-) -> AuthorizationService:
-    """Предоставляет сервис авторизации запроса на время запроса.
+async def get_revoke_token(
+    client: Annotated[Redis, Depends(get_bounded_client(StorageNumber.TOKENS.value))],
+) -> RevokeToken:
+    """Предоставляет use case отзыва токена на время запроса.
 
     Args:
-        decryption_service (JWTDecryptionService): Сервис проверки JWT токенов.
-        revocation_service (TokenRevocationService): Сервис проверки отзыва токенов.
+        client (Redis): Клиент Redis с отозванными токенами.
 
     Returns:
-        AuthorizationService: Сервис проверки Bearer-токена и его отзыва.
+        RevokeToken: Use case отзыва токена.
     """
-    return AuthorizationService(decryption_service, revocation_service)
+    return RevokeToken(RedisRevokedTokensRepository(client))
+
+
+async def get_authorize(
+    verify: Annotated[VerifyAccessToken, Depends(get_verify_access_token)],
+    ensure_active: Annotated[EnsureTokenActive, Depends(get_ensure_token_active)],
+) -> Authorize:
+    """Предоставляет use case авторизации запроса на время запроса.
+
+    Args:
+        verify (VerifyAccessToken): Use case проверки JWT-токена.
+        ensure_active (EnsureTokenActive): Use case проверки отзыва токена.
+
+    Returns:
+        Authorize: Use case проверки Bearer-токена и его отзыва.
+    """
+    return Authorize(verify, ensure_active)
 
 
 async def get_access_token(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(schema)],
-    authorization_service: Annotated[AuthorizationService, Depends(get_authorization_service)],
+    authorize: Annotated[Authorize, Depends(get_authorize)],
 ) -> AccessTokenClaims:
     """Проверяет Bearer-токен и возвращает его claims.
 
     Args:
-        token (str | None): Токен из заголовка `Authorization`.
-        authorization_service (AuthorizationService): Сервис авторизации запроса.
+        credentials (HTTPAuthorizationCredentials | None): Учётные данные заголовка
+            `Authorization`.
+        authorize (Authorize): Use case авторизации запроса.
 
     Raises:
         UserAuthorizationError: Токен не передан.
@@ -126,18 +169,18 @@ async def get_access_token(
     """
     token = credentials.credentials if credentials is not None else None
 
-    return await authorization_service.authorize(token)
+    return await authorize(token)
 
 
 async def get_current_user(
     claims: Annotated[AccessTokenClaims, Depends(get_access_token)],
-    user_service: Annotated[UserService, Depends(get_user_service)],
+    fetch_user: Annotated[GetUser, Depends(get_user)],
 ) -> User:
     """Возвращает учётную запись владельца проверенного токена.
 
     Args:
         claims (AccessTokenClaims): Проверенные claims токена.
-        user_service (UserService): Сервис учётных записей.
+        fetch_user (GetUser): Use case получения учётной записи по идентификатору.
 
     Raises:
         JWTDecryptionError: В `sub` токена не числовой идентификатор пользователя.
@@ -152,4 +195,4 @@ async def get_current_user(
         msg = "Token subject is invalid."
         raise JWTDecryptionError(msg) from error
 
-    return await user_service.get_account(user_id)
+    return await fetch_user(user_id)

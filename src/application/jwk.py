@@ -9,23 +9,25 @@ from src.application.security import key_to_jwk
 from src.domain.errors import ServiceError
 from src.domain.ports import JsonWebKey, PrivateJwkRepository, PublicJwkRepository
 
+from ._base import AbstractUseCase
 
-class JWKPublishingService:
-    """Сервис публикации публичных JWK подписи токенов.
+
+class CollectJwks(AbstractUseCase):
+    """Use case сбора опубликованных публичных JWK.
 
     Отдаёт набор публичных ключей из кеша, чтобы потребители токенов проверяли подпись
     офлайн, по ключам из JWKS, и не обращались за этим к сервису на каждый запрос.
     """
 
-    def __init__(self, jwk_repository: PublicJwkRepository) -> None:
+    def __init__(self, jwks: PublicJwkRepository) -> None:
         """Инициализация класса.
 
         Args:
-            jwk_repository (PublicJwkRepository): Репозиторий публичных JWK.
+            jwks (PublicJwkRepository): Порт публичных JWK.
         """
-        self._cache = jwk_repository
+        self._cache = jwks
 
-    async def collect(self) -> Sequence[JsonWebKey]:
+    async def __call__(self) -> Sequence[JsonWebKey]:
         """Собирает опубликованные публичные JWK.
 
         Returns:
@@ -37,32 +39,32 @@ class JWKPublishingService:
         return await self._cache.acquire_all()
 
 
-class JWKGenerationService:
-    """Сервисный класс генерации JWK для подписи JWT.
+class RotateJwk(AbstractUseCase):
+    """Use case генерации и ротации JWK для подписи JWT.
 
-    Сервис работает исключительно с ключами алгоритма EdDSA на кривой Ed25519.
+    Работает исключительно с ключами алгоритма EdDSA на кривой Ed25519.
     """
 
     def __init__(
         self,
-        private_key_repository: PrivateJwkRepository,
-        public_key_repossitory: PublicJwkRepository,
+        private_keys: PrivateJwkRepository,
+        public_keys: PublicJwkRepository,
     ) -> None:
         """Инициализация класса.
 
         Args:
-            private_key_repository (PrivateJwkRepository): Репозиторий приватного ключа подписи.
-            public_key_repossitory (PublicJwkRepository): Репозиторий для хранения публичных JWK.
+            private_keys (PrivateJwkRepository): Порт приватного ключа подписи.
+            public_keys (PublicJwkRepository): Порт хранения публичных JWK.
         """
-        self._private_key = private_key_repository
-        self._publick_key = public_key_repossitory
+        self._private_key = private_keys
+        self._publick_key = public_keys
 
-    async def generate_jwk(self, rotated_ttl: int, *, overwrite: bool = False) -> PyJWK:
+    async def __call__(self, rotated_ttl: int, *, overwrite: bool = False) -> PyJWK:
         """Генерирует приватный JWK.
 
-        Если ключ уже существует, а флаг перезаписи не был передан, то сервис не будет
-        генерировать новый приватный JWK ключ, а лишь проверит существование соответствующего
-        ему публичного JWK ключа в Redis.
+        Если ключ уже существует, а флаг перезаписи не был передан, то не генерирует новый
+        приватный JWK ключ, а лишь проверяет существование соответствующего ему публичного
+        JWK ключа в Redis.
 
         Args:
             rotated_ttl (int): Время жизни публичных JWK, чья приватная пара была ротированна.

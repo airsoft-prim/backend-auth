@@ -11,9 +11,9 @@ from jwt import PyJWK
 import pytest
 
 from src.adapters.filesystem.repositories import FilePrivateJwkRepository
-from src.application.jwk import JWKGenerationService
+from src.application.jwk import RotateJwk
 from src.application.security import SIGNING_ALGORITHM
-from src.application.token import JWTEncryptionService
+from src.application.token import IssueAccessToken
 from src.config import config
 from src.domain.errors import JWTEncryptionError
 
@@ -62,8 +62,8 @@ def _foreign_algorithm_pem() -> bytes:
 
 
 async def test_encrypt_signs_token_with_required_header_and_claims(
-    encryption_service: JWTEncryptionService,
-    jwk_service: JWKGenerationService,
+    issue_access_token: IssueAccessToken,
+    rotate_jwk: RotateJwk,
 ) -> None:
     """Выпуск токена с обязательными заголовком и claims.
 
@@ -73,10 +73,10 @@ async def test_encrypt_signs_token_with_required_header_and_claims(
     субъекта, `jti`, момент выпуска и срок действия из конфигурации.
     """
     # Дано
-    published = await jwk_service.generate_jwk(TTL_SECONDS)
+    published = await rotate_jwk(TTL_SECONDS)
 
     # Когда
-    token, expires_in = await encryption_service.encrypt(
+    token, expires_in = await issue_access_token(
         SUBJECT,
         SUBJECT_ROLE,
         token_id=TOKEN_ID,
@@ -99,8 +99,8 @@ async def test_encrypt_signs_token_with_required_header_and_claims(
 
 
 async def test_encrypt_uses_custom_audience_and_lifetime(
-    encryption_service: JWTEncryptionService,
-    jwk_service: JWKGenerationService,
+    issue_access_token: IssueAccessToken,
+    rotate_jwk: RotateJwk,
 ) -> None:
     """Выпуск токена с аудиторией и сроком жизни на один вызов.
 
@@ -110,12 +110,12 @@ async def test_encrypt_uses_custom_audience_and_lifetime(
     содержит этот срок в секундах.
     """
     # Дано
-    published = await jwk_service.generate_jwk(TTL_SECONDS)
+    published = await rotate_jwk(TTL_SECONDS)
     audience = "backend-api"
     issued_before = int(datetime.now(UTC).timestamp())
 
     # Когда
-    token, expires_in = await encryption_service.encrypt(
+    token, expires_in = await issue_access_token(
         SUBJECT,
         audience=audience,
         ttl=TTL_SECONDS,
@@ -131,8 +131,8 @@ async def test_encrypt_uses_custom_audience_and_lifetime(
 
 
 async def test_encrypt_omits_optional_role_claim(
-    encryption_service: JWTEncryptionService,
-    jwk_service: JWKGenerationService,
+    issue_access_token: IssueAccessToken,
+    rotate_jwk: RotateJwk,
 ) -> None:
     """Выпуск токена без необязательного claim роли.
 
@@ -141,10 +141,10 @@ async def test_encrypt_omits_optional_role_claim(
     Then: claim `srl` в токен не добавляется, а остальные claims остаются на месте.
     """
     # Дано
-    published = await jwk_service.generate_jwk(TTL_SECONDS)
+    published = await rotate_jwk(TTL_SECONDS)
 
     # Когда
-    token, _ = await encryption_service.encrypt(SUBJECT)
+    token, _ = await issue_access_token(SUBJECT)
     claims = _decode(token, published)
 
     # Тогда
@@ -153,8 +153,8 @@ async def test_encrypt_omits_optional_role_claim(
 
 
 async def test_encrypt_generates_unique_token_ids(
-    encryption_service: JWTEncryptionService,
-    jwk_service: JWKGenerationService,
+    issue_access_token: IssueAccessToken,
+    rotate_jwk: RotateJwk,
 ) -> None:
     """Идентификатор токена при выпуске без явного `jti`.
 
@@ -163,11 +163,11 @@ async def test_encrypt_generates_unique_token_ids(
     Then: каждый токен получает собственный непустой `jti` для будущего отзыва.
     """
     # Дано
-    published = await jwk_service.generate_jwk(TTL_SECONDS)
+    published = await rotate_jwk(TTL_SECONDS)
 
     # Когда
-    first_token, _ = await encryption_service.encrypt(SUBJECT)
-    second_token, _ = await encryption_service.encrypt(SUBJECT)
+    first_token, _ = await issue_access_token(SUBJECT)
+    second_token, _ = await issue_access_token(SUBJECT)
     first = _decode(first_token, published)
     second = _decode(second_token, published)
 
@@ -177,7 +177,7 @@ async def test_encrypt_generates_unique_token_ids(
     assert first["jti"] != second["jti"]
 
 
-async def test_encrypt_rejects_missing_key_file(encryption_service: JWTEncryptionService) -> None:
+async def test_encrypt_rejects_missing_key_file(issue_access_token: IssueAccessToken) -> None:
     """Выпуск токена без keyfile.
 
     Given: файл приватного ключа ещё не создан,
@@ -186,11 +186,11 @@ async def test_encrypt_rejects_missing_key_file(encryption_service: JWTEncryptio
     """
     # Когда / Тогда
     with pytest.raises(JWTEncryptionError, match="Signing key file is missing"):
-        await encryption_service.encrypt(SUBJECT)
+        await issue_access_token(SUBJECT)
 
 
 async def test_encrypt_rejects_malformed_key_file(
-    encryption_service: JWTEncryptionService,
+    issue_access_token: IssueAccessToken,
     key_store_dir: Path,
 ) -> None:
     """Выпуск токена с повреждённым keyfile.
@@ -206,11 +206,11 @@ async def test_encrypt_rejects_malformed_key_file(
 
     # Когда / Тогда
     with pytest.raises(JWTEncryptionError, match="not a valid PEM private key"):
-        await encryption_service.encrypt(SUBJECT)
+        await issue_access_token(SUBJECT)
 
 
 async def test_encrypt_rejects_foreign_key_algorithm(
-    encryption_service: JWTEncryptionService,
+    issue_access_token: IssueAccessToken,
     key_store_dir: Path,
 ) -> None:
     """Выпуск токена ключом чужого алгоритма.
@@ -226,4 +226,4 @@ async def test_encrypt_rejects_foreign_key_algorithm(
 
     # Когда / Тогда
     with pytest.raises(JWTEncryptionError, match="does not contain an Ed25519 key"):
-        await encryption_service.encrypt(SUBJECT)
+        await issue_access_token(SUBJECT)

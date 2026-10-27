@@ -5,7 +5,7 @@ from typing import Any
 
 import jwt
 
-from src.application.jwk import JWKGenerationService
+from src.application.jwk import RotateJwk
 from tests.asgi_client import ASGIClient
 from tests.doubles import InMemoryRedis
 from tests.functional.conftest import TokenSigner
@@ -66,7 +66,7 @@ def _key_id(public_key: jwt.PyJWK) -> str:
 
 async def test_consumer_verifies_token_with_key_from_jwks(
     jwks_client: ASGIClient,
-    jwk_service: JWKGenerationService,
+    rotate_jwk: RotateJwk,
     sign_access_token: TokenSigner,
 ) -> None:
     """Проверка подписи токена по опубликованному JWKS.
@@ -76,7 +76,7 @@ async def test_consumer_verifies_token_with_key_from_jwks(
     Then: подпись сходится, а claims токена читаются без обращения к сервису за ключом.
     """
     # Дано
-    published = await jwk_service.generate_jwk(ROTATED_TTL_SECONDS)
+    published = await rotate_jwk(ROTATED_TTL_SECONDS)
     token = sign_access_token(_claims(), _key_id(published))
 
     # Когда
@@ -90,7 +90,7 @@ async def test_consumer_verifies_token_with_key_from_jwks(
 
 async def test_rotation_keeps_previous_key_published_for_issued_tokens(
     jwks_client: ASGIClient,
-    jwk_service: JWKGenerationService,
+    rotate_jwk: RotateJwk,
     redis_double: InMemoryRedis,
     sign_access_token: TokenSigner,
 ) -> None:
@@ -102,11 +102,11 @@ async def test_rotation_keeps_previous_key_published_for_issued_tokens(
     поэтому ранее выданный токен ещё проверяется.
     """
     # Дано
-    previous = await jwk_service.generate_jwk(ROTATED_TTL_SECONDS)
+    previous = await rotate_jwk(ROTATED_TTL_SECONDS)
     token = sign_access_token(_claims(), _key_id(previous))
 
     # Когда
-    rotated = await jwk_service.generate_jwk(ROTATED_TTL_SECONDS, overwrite=True)
+    rotated = await rotate_jwk(ROTATED_TTL_SECONDS, overwrite=True)
     response = await jwks_client.get(JWKS_PATH)
 
     # Тогда

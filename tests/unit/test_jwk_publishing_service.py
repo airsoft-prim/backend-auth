@@ -3,15 +3,15 @@
 import pytest
 
 from src.adapters.cache.repositories import RedisPublicJwkRepository
-from src.application.jwk import JWKGenerationService, JWKPublishingService
+from src.application.jwk import CollectJwks, RotateJwk
 from src.domain.errors import RepositoryError
 
 KEY_TTL_SECONDS = 3600
 
 
 async def test_collect_returns_every_published_key(
-    publishing_service: JWKPublishingService,
-    jwk_service: JWKGenerationService,
+    collect_jwks: CollectJwks,
+    rotate_jwk: RotateJwk,
 ) -> None:
     """Набор публичных ключей подписи.
 
@@ -20,18 +20,18 @@ async def test_collect_returns_every_published_key(
     Then: в набор попадают оба ключа.
     """
     # Дано
-    previous = await jwk_service.generate_jwk(KEY_TTL_SECONDS)
-    current = await jwk_service.generate_jwk(KEY_TTL_SECONDS, overwrite=True)
+    previous = await rotate_jwk(KEY_TTL_SECONDS)
+    current = await rotate_jwk(KEY_TTL_SECONDS, overwrite=True)
 
     # Когда
-    keys = await publishing_service.collect()
+    keys = await collect_jwks()
 
     # Тогда
     assert {key["kid"] for key in keys} == {previous.key_id, current.key_id}
 
 
 async def test_collect_returns_empty_sequence_when_nothing_is_published(
-    publishing_service: JWKPublishingService,
+    collect_jwks: CollectJwks,
 ) -> None:
     """Пустой набор ключей.
 
@@ -40,7 +40,7 @@ async def test_collect_returns_empty_sequence_when_nothing_is_published(
     Then: набор пуст — это корректный результат, а не ошибка.
     """
     # Когда
-    keys = await publishing_service.collect()
+    keys = await collect_jwks()
 
     # Тогда
     assert list(keys) == []
@@ -56,8 +56,8 @@ async def test_collect_propagates_cache_failure(
     Then: ошибка кеша не скрывается от вызывающего кода.
     """
     # Дано
-    service = JWKPublishingService(jwk_repository=unavailable_repository)
+    collect_jwks = CollectJwks(jwks=unavailable_repository)
 
     # Когда / Тогда
     with pytest.raises(RepositoryError, match="listing error"):
-        await service.collect()
+        await collect_jwks()

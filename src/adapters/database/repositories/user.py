@@ -6,6 +6,7 @@ from src.adapters.database.models import UserModel
 from src.domain.entities import User
 
 
+# TODO: Стоит подумать нат слоем мапперов
 def _user_from_model(model: UserModel) -> User:
     """Преобразует ORM-модель учётной записи в доменную сущность.
 
@@ -129,6 +130,7 @@ class SqlAlchemyUserRepository(Repository):
 
         return await self._acquire(statement)
 
+    # TODO: Это меня не совсем устраивает
     async def save(self, user: User) -> None:
         """Сохраняет учётную запись в БД.
 
