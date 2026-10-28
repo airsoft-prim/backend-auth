@@ -14,23 +14,17 @@ PASSWORD_REQUIREMENTS: Final[re.Pattern[str]] = re.compile(
     re.DOTALL,
 )
 
-# Политика username общая для регистрации и входа.
+# Политика username общая для регистрации и входа, меняться не должна!
 Username = Annotated[
     str,
-    Field(
-        min_length=3,
-        max_length=30,
-        pattern=r"^[A-Za-z][A-Za-z0-9_-]*$",
-        description="Логин учётной записи.",
-        examples=["Oidaho"],
-    ),
+    Field(min_length=3, max_length=30, pattern=r"^[A-Za-z][A-Za-z0-9_-]*$"),
 ]
 
 
 class RegisterRequestBody(BaseModel):
     """Тело запроса на регистрацию пользователя."""
 
-    username: Username
+    username: Username = Field(description="Логин учётной записи.", examples=["Oidaho"])
     email: EmailStr = Field(description="Адрес электронной почты.", examples=["user@example.ru"])
     password: SecretStr = Field(min_length=8, max_length=72, description="Пароль учётной записи.")
 
@@ -58,7 +52,7 @@ class RegisterRequestBody(BaseModel):
 class LoginRequestBody(BaseModel):
     """Тело запроса на вход в систему."""
 
-    username: Username
+    username: Username = Field(description="Логин учётной записи.", examples=["Oidaho"])
     password: SecretStr = Field(description="Пароль учётной записи.")
 
 
