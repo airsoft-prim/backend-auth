@@ -6,11 +6,12 @@ import pytest
 
 from src.adapters.cache.repositories import RedisRevokedTokensRepository
 from src.application import EnsureTokenActive, RevokeToken
-from src.domain.entities import AccessTokenClaims
 from src.domain.errors import TokenRevokedError
+from src.domain.tokens import AccessTokenClaims
 from tests.doubles import InMemoryRedis
 
 TOKEN_ID = "token-under-test"  # noqa: S105
+SID = "session-under-test"
 TTL_SECONDS = 3600
 
 
@@ -23,14 +24,15 @@ def _claims(*, expires_at: int) -> AccessTokenClaims:
     Returns:
         AccessTokenClaims: Claims токена с заданным сроком действия.
     """
-    return {
-        "iss": "Auth Server",
-        "sub": "42",
-        "aud": "Airsoft Prim",
-        "iat": expires_at - TTL_SECONDS,
-        "exp": expires_at,
-        "jti": TOKEN_ID,
-    }
+    return AccessTokenClaims(
+        iss="Auth Server",
+        sub="42",
+        aud="Airsoft Prim",
+        iat=expires_at - TTL_SECONDS,
+        exp=expires_at,
+        jti=TOKEN_ID,
+        sid=SID,
+    )
 
 
 def _expires_in(seconds: int) -> int:

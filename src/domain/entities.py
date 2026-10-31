@@ -1,25 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Annotated, NotRequired, TypedDict
 
 from src.domain.enums import UserRole
-
-
-class AccessTokenClaims(TypedDict, total=True):
-    """Claims access-токена, которые сервис выпускает и проверяет.
-
-    Каждый атрибут аннотирован согласно RFC 7519.
-    """
-
-    iss: Annotated[str, "Issuer"]
-    sub: Annotated[str, "Subject"]
-    aud: Annotated[str, "Audience"]
-    exp: Annotated[int, "Expiration time"]
-    iat: Annotated[int, "Issued at"]
-    jti: Annotated[str, "JWT ID"]
-
-    # Кастомный необязательный claim: роль есть не у всех потребителей.
-    srl: NotRequired[Annotated[str, "Subject Role"]]
 
 
 @dataclass(slots=True)

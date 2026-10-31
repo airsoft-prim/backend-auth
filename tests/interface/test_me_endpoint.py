@@ -3,10 +3,11 @@
 from datetime import UTC, datetime
 
 from fastapi import FastAPI, status
+import jwt
 import pytest
 
 from src.adapters.cache.repositories import RedisRevokedTokensRepository
-from src.application import EnsureTokenActive, IssueAccessToken, VerifyAccessToken
+from src.application import EnsureTokenActive, SignToken, VerifyToken
 from src.application.auth import GetUser
 from src.application.jwk import RotateJwk
 from src.domain.entities import User
@@ -14,7 +15,7 @@ from src.domain.enums import TokenType, UserRole
 from src.interface.auth.deps import (
     get_ensure_token_active,
     get_user,
-    get_verify_access_token,
+    get_verify_token,
 )
 from tests.asgi_client import ASGIClient
 from tests.doubles import InMemoryUserRepository, as_user_repository
@@ -23,7 +24,8 @@ ME_PATH = "/auth/me"
 USER_ID = 42
 USERNAME = "stalker_2010"
 EMAIL = "user@airsoft-prim.ru"
-TOKEN_ID = "me-token-under-test"  # noqa: S105
+SUBJECT_ROLE = "user"
+SID = "session-under-test"
 TTL_SECONDS = 3600
 CREATED_AT = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
 UPDATED_AT = datetime(2026, 9, 2, 13, 30, tzinfo=UTC)
@@ -43,7 +45,7 @@ def user_repository() -> InMemoryUserRepository:
 def me_client(
     api_app: FastAPI,
     user_repository: InMemoryUserRepository,
-    verify_access_token: VerifyAccessToken,
+    verify_token: VerifyToken,
     blacklisted_tokens_repository: RedisRevokedTokensRepository,
 ) -> ASGIClient:
     """Отдаёт клиент профиля с подменами БД, проверки токена и хранилища отзыва.
@@ -51,7 +53,7 @@ def me_client(
     Args:
         api_app (FastAPI): Приложение под тестом.
         user_repository (InMemoryUserRepository): Подмена репозитория учётных записей.
-        verify_access_token (VerifyAccessToken): Use case проверки токенов поверх
+        verify_token (VerifyToken): Use case проверки токенов поверх
             подмены Redis с опубликованными JWK.
         blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий
             отозванных токенов поверх подмены Redis.
@@ -60,7 +62,7 @@ def me_client(
         ASGIClient: Клиент маршрута профиля.
     """
     api_app.dependency_overrides[get_user] = lambda: GetUser(as_user_repository(user_repository))
-    api_app.dependency_overrides[get_verify_access_token] = lambda: verify_access_token
+    api_app.dependency_overrides[get_verify_token] = lambda: verify_token
     api_app.dependency_overrides[get_ensure_token_active] = lambda: EnsureTokenActive(
         blacklisted_tokens_repository
     )
@@ -98,25 +100,23 @@ def _stored_account(
 
 async def _issue_token(
     rotate_jwk: RotateJwk,
-    issue_access_token: IssueAccessToken,
+    sign_token: SignToken,
     *,
     subject: int | str = USER_ID,
-    ttl: int = TTL_SECONDS,
 ) -> str:
     """Публикует ключ и выпускает access-токен для проверки профиля.
 
     Args:
         rotate_jwk (RotateJwk): Use case генерации и публикации ключей.
-        issue_access_token (IssueAccessToken): Use case выпуска токенов.
+        sign_token (SignToken): Use case выпуска токенов.
         subject (int | str, optional): Идентификатор пользователя в `sub`.
             Defaults to USER_ID.
-        ttl (int, optional): Срок жизни токена в секундах. Defaults to TTL_SECONDS.
 
     Returns:
         str: Подписанный access-токен.
     """
     await rotate_jwk(TTL_SECONDS)
-    token, _ = await issue_access_token(subject, token_id=TOKEN_ID, ttl=ttl)
+    token, _ = await sign_token(subject, SID, not_required={"srl": SUBJECT_ROLE})
 
     return token
 
@@ -133,11 +133,23 @@ def _authorization(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def _token_jti(token: str) -> str:
+    """Возвращает `jti` токена без проверки подписи.
+
+    Args:
+        token (str): Подписанный JWT.
+
+    Returns:
+        str: Идентификатор токена (`jti`).
+    """
+    return jwt.decode(token, options={"verify_signature": False})["jti"]
+
+
 async def test_me_returns_owner_profile(
     me_client: ASGIClient,
     user_repository: InMemoryUserRepository,
     rotate_jwk: RotateJwk,
-    issue_access_token: IssueAccessToken,
+    sign_token: SignToken,
 ) -> None:
     """Профиль владельца действующего токена.
 
@@ -147,7 +159,7 @@ async def test_me_returns_owner_profile(
     """
     # Дано
     user_repository.users.append(_stored_account())
-    token = await _issue_token(rotate_jwk, issue_access_token)
+    token = await _issue_token(rotate_jwk, sign_token)
 
     # Когда
     response = await me_client.get(ME_PATH, headers=_authorization(token))
@@ -171,7 +183,7 @@ async def test_me_returns_profile_of_blocked_user(
     me_client: ASGIClient,
     user_repository: InMemoryUserRepository,
     rotate_jwk: RotateJwk,
-    issue_access_token: IssueAccessToken,
+    sign_token: SignToken,
 ) -> None:
     """Профиль заблокированного владельца токена.
 
@@ -181,7 +193,7 @@ async def test_me_returns_profile_of_blocked_user(
     """
     # Дано
     user_repository.users.append(_stored_account(disabled=True))
-    token = await _issue_token(rotate_jwk, issue_access_token)
+    token = await _issue_token(rotate_jwk, sign_token)
 
     # Когда
     response = await me_client.get(ME_PATH, headers=_authorization(token))
@@ -230,7 +242,7 @@ async def test_me_rejects_revoked_token(
     me_client: ASGIClient,
     user_repository: InMemoryUserRepository,
     rotate_jwk: RotateJwk,
-    issue_access_token: IssueAccessToken,
+    sign_token: SignToken,
     blacklisted_tokens_repository: RedisRevokedTokensRepository,
 ) -> None:
     """Профиль с отозванным токеном.
@@ -241,10 +253,10 @@ async def test_me_rejects_revoked_token(
     """
     # Дано
     user_repository.users.append(_stored_account())
-    token = await _issue_token(rotate_jwk, issue_access_token)
+    token = await _issue_token(rotate_jwk, sign_token)
     await blacklisted_tokens_repository.store(
         token_type=TokenType.ACCESS,
-        token_id=TOKEN_ID,
+        token_id=_token_jti(token),
         ttl=TTL_SECONDS,
     )
 
@@ -258,7 +270,7 @@ async def test_me_rejects_revoked_token(
 async def test_me_rejects_unknown_user(
     me_client: ASGIClient,
     rotate_jwk: RotateJwk,
-    issue_access_token: IssueAccessToken,
+    sign_token: SignToken,
 ) -> None:
     """Профиль токена, чья учётная запись не найдена.
 
@@ -267,7 +279,7 @@ async def test_me_rejects_unknown_user(
     Then: приходит 401: владельца токена идентифицировать нельзя.
     """
     # Дано
-    token = await _issue_token(rotate_jwk, issue_access_token)
+    token = await _issue_token(rotate_jwk, sign_token)
 
     # Когда
     response = await me_client.get(ME_PATH, headers=_authorization(token))
@@ -280,7 +292,7 @@ async def test_me_rejects_unknown_user(
 async def test_me_rejects_non_numeric_subject(
     me_client: ASGIClient,
     rotate_jwk: RotateJwk,
-    issue_access_token: IssueAccessToken,
+    sign_token: SignToken,
 ) -> None:
     """Профиль токена с нечисловым субъектом.
 
@@ -289,7 +301,7 @@ async def test_me_rejects_non_numeric_subject(
     Then: приходит 403: токен не позволяет выбрать учётную запись.
     """
     # Дано
-    token = await _issue_token(rotate_jwk, issue_access_token, subject="not-a-number")
+    token = await _issue_token(rotate_jwk, sign_token, subject="not-a-number")
 
     # Когда
     response = await me_client.get(ME_PATH, headers=_authorization(token))

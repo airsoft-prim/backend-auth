@@ -13,13 +13,14 @@ import pytest
 from src.adapters.filesystem.repositories import FilePrivateJwkRepository
 from src.application.jwk import RotateJwk
 from src.application.security import SIGNING_ALGORITHM
-from src.application.token import IssueAccessToken
+from src.application.token import SignToken
 from src.config import config
 from src.domain.errors import JWTEncryptionError
+from src.domain.tokens import AccessTokenConfig
 
 SUBJECT = 42
 SUBJECT_ROLE = "moderator"
-TOKEN_ID = "token-under-test"  # noqa: S105
+SID = "session-under-test"
 TTL_SECONDS = 3600
 
 
@@ -61,8 +62,8 @@ def _foreign_algorithm_pem() -> bytes:
     )
 
 
-async def test_encrypt_signs_token_with_required_header_and_claims(
-    issue_access_token: IssueAccessToken,
+async def test_signs_token_with_required_header_and_claims(
+    sign_token: SignToken,
     rotate_jwk: RotateJwk,
 ) -> None:
     """Выпуск токена с обязательными заголовком и claims.
@@ -70,56 +71,53 @@ async def test_encrypt_signs_token_with_required_header_and_claims(
     Given: у сервиса есть приватный ключ подписи и его публичная часть опубликована,
     When: сервис выпускает токен для пользователя,
     Then: заголовок содержит `alg`, `typ` и `kid`, а claims — издателя, аудиторию,
-    субъекта, `jti`, момент выпуска и срок действия из конфигурации.
+    субъекта, роль, `jti`, момент выпуска и срок действия из конфигурации.
     """
     # Дано
     published = await rotate_jwk(TTL_SECONDS)
 
     # Когда
-    token, expires_in = await issue_access_token(
-        SUBJECT,
-        SUBJECT_ROLE,
-        token_id=TOKEN_ID,
-    )
+    token, expires_in = await sign_token(SUBJECT, SID, not_required={"srl": SUBJECT_ROLE})
 
     # Тогда
     header = jwt.get_unverified_header(token)
     claims = _decode(token, published)
 
     assert header["alg"] == SIGNING_ALGORITHM
-    assert header["typ"] == "JWT"
+    assert header["typ"] == "access"
     assert header["kid"] == published.key_id
     assert claims["iss"] == config.app.NAME
     assert claims["aud"] == config.app.PROJECT
     assert claims["sub"] == str(SUBJECT)
     assert claims["srl"] == SUBJECT_ROLE
-    assert claims["jti"] == TOKEN_ID
+    assert claims["jti"]
     assert claims["exp"] - claims["iat"] == config.security.ACCESS_TOKEN_TTL
     assert expires_in == config.security.ACCESS_TOKEN_TTL
 
 
-async def test_encrypt_uses_custom_audience_and_lifetime(
-    issue_access_token: IssueAccessToken,
+async def test_sign_uses_custom_audience_and_lifetime(
     rotate_jwk: RotateJwk,
+    private_jwk_repository: FilePrivateJwkRepository,
 ) -> None:
-    """Выпуск токена с аудиторией и сроком жизни на один вызов.
+    """Выпуск токена с конфигурацией под свою аудиторию и срок жизни.
 
-    Given: у сервиса есть ключ подписи, а вызывающий код передаёт свою аудиторию и TTL,
+    Given: у сервиса есть ключ подписи, а use case собран с конфигурацией,
+    задающей свою аудиторию и TTL,
     When: сервис выпускает токен,
-    Then: токен адресован этой аудитории, живёт ровно переданный срок, а `expires_in`
+    Then: токен адресован этой аудитории, живёт ровно заданный срок, а `expires_in`
     содержит этот срок в секундах.
     """
     # Дано
     published = await rotate_jwk(TTL_SECONDS)
     audience = "backend-api"
     issued_before = int(datetime.now(UTC).timestamp())
+    custom = SignToken(
+        AccessTokenConfig(issuer=config.app.NAME, audience=audience, ttl=TTL_SECONDS),
+        private_jwk_repository,
+    )
 
     # Когда
-    token, expires_in = await issue_access_token(
-        SUBJECT,
-        audience=audience,
-        ttl=TTL_SECONDS,
-    )
+    token, expires_in = await custom(SUBJECT, SID, not_required={"srl": SUBJECT_ROLE})
 
     # Тогда
     claims = _decode(token, published, audience=audience)
@@ -130,44 +128,22 @@ async def test_encrypt_uses_custom_audience_and_lifetime(
     assert expires_in == TTL_SECONDS
 
 
-async def test_encrypt_omits_optional_role_claim(
-    issue_access_token: IssueAccessToken,
+async def test_sign_generates_unique_token_ids(
+    sign_token: SignToken,
     rotate_jwk: RotateJwk,
 ) -> None:
-    """Выпуск токена без необязательного claim роли.
+    """Идентификатор токена.
 
-    Given: вызывающий код не передаёт системную роль,
-    When: сервис выпускает токен,
-    Then: claim `srl` в токен не добавляется, а остальные claims остаются на месте.
+    Given: сервис выпускает два токена подряд,
+    When: каждый токен получает идентификатор,
+    Then: идентификаторы непустые и не совпадают.
     """
     # Дано
     published = await rotate_jwk(TTL_SECONDS)
 
     # Когда
-    token, _ = await issue_access_token(SUBJECT)
-    claims = _decode(token, published)
-
-    # Тогда
-    assert "srl" not in claims
-    assert claims["sub"] == str(SUBJECT)
-
-
-async def test_encrypt_generates_unique_token_ids(
-    issue_access_token: IssueAccessToken,
-    rotate_jwk: RotateJwk,
-) -> None:
-    """Идентификатор токена при выпуске без явного `jti`.
-
-    Given: вызывающий код не передаёт идентификатор токена,
-    When: сервис выпускает два токена подряд,
-    Then: каждый токен получает собственный непустой `jti` для будущего отзыва.
-    """
-    # Дано
-    published = await rotate_jwk(TTL_SECONDS)
-
-    # Когда
-    first_token, _ = await issue_access_token(SUBJECT)
-    second_token, _ = await issue_access_token(SUBJECT)
+    first_token, _ = await sign_token(SUBJECT, SID, not_required={"srl": SUBJECT_ROLE})
+    second_token, _ = await sign_token(SUBJECT, SID, not_required={"srl": SUBJECT_ROLE})
     first = _decode(first_token, published)
     second = _decode(second_token, published)
 
@@ -177,7 +153,7 @@ async def test_encrypt_generates_unique_token_ids(
     assert first["jti"] != second["jti"]
 
 
-async def test_encrypt_rejects_missing_key_file(issue_access_token: IssueAccessToken) -> None:
+async def test_sign_rejects_missing_key_file(sign_token: SignToken) -> None:
     """Выпуск токена без keyfile.
 
     Given: файл приватного ключа ещё не создан,
@@ -186,11 +162,11 @@ async def test_encrypt_rejects_missing_key_file(issue_access_token: IssueAccessT
     """
     # Когда / Тогда
     with pytest.raises(JWTEncryptionError, match="Signing key file is missing"):
-        await issue_access_token(SUBJECT)
+        await sign_token(SUBJECT, SID, not_required={"srl": SUBJECT_ROLE})
 
 
-async def test_encrypt_rejects_malformed_key_file(
-    issue_access_token: IssueAccessToken,
+async def test_sign_rejects_malformed_key_file(
+    sign_token: SignToken,
     key_store_dir: Path,
 ) -> None:
     """Выпуск токена с повреждённым keyfile.
@@ -206,11 +182,11 @@ async def test_encrypt_rejects_malformed_key_file(
 
     # Когда / Тогда
     with pytest.raises(JWTEncryptionError, match="not a valid PEM private key"):
-        await issue_access_token(SUBJECT)
+        await sign_token(SUBJECT, SID, not_required={"srl": SUBJECT_ROLE})
 
 
-async def test_encrypt_rejects_foreign_key_algorithm(
-    issue_access_token: IssueAccessToken,
+async def test_sign_rejects_foreign_key_algorithm(
+    sign_token: SignToken,
     key_store_dir: Path,
 ) -> None:
     """Выпуск токена ключом чужого алгоритма.
@@ -226,4 +202,4 @@ async def test_encrypt_rejects_foreign_key_algorithm(
 
     # Когда / Тогда
     with pytest.raises(JWTEncryptionError, match="does not contain an Ed25519 key"):
-        await issue_access_token(SUBJECT)
+        await sign_token(SUBJECT, SID, not_required={"srl": SUBJECT_ROLE})

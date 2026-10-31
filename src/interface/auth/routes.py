@@ -1,18 +1,20 @@
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import APIRouter, Body, Depends, Response
 
 from src.application.auth import LoginUser, RegisterUser
-from src.application.token import IssueAccessToken, RevokeToken
-from src.domain.entities import AccessTokenClaims, User
+from src.application.token import RevokeToken, SignToken
+from src.domain.entities import User
+from src.domain.tokens import AccessTokenClaims
 
 from .deps import (
     get_access_token,
     get_current_user,
-    get_issue_access_token,
     get_login_user,
     get_register_user,
     get_revoke_token,
+    get_sign_token,
 )
 from .docs import LOGIN_DOCS, LOGOUT_DOCS, ME_DOCS, REGISTER_DOCS
 from .schemas import AccessToken, LoginRequestBody, RegisterRequestBody, UserData
@@ -42,20 +44,20 @@ async def register_user(
 async def login_user(
     body: Annotated[LoginRequestBody, Body(...)],
     login: Annotated[LoginUser, Depends(get_login_user)],
-    issue_token: Annotated[IssueAccessToken, Depends(get_issue_access_token)],
+    sign_token: Annotated[SignToken, Depends(get_sign_token)],
 ) -> AccessToken:
     """Функция входа в систему.
 
     Args:
         body (LoginRequestBody): Учётные данные пользователя.
         login (LoginUser): Use case входа.
-        issue_token (IssueAccessToken): Use case выпуска токена.
+        sign_token (SignToken): Use case подписи токена.
 
     Returns:
         AccessToken: Данные сессии, включая токен доступа и его параметры.
     """
     subject, role = await login(body.username, body.password.get_secret_value())
-    access_token, expires_in = await issue_token(subject, role)
+    access_token, expires_in = await sign_token(subject, uuid4().hex, not_required={"srl": role})
 
     return AccessToken(access_token=access_token, expires_in=expires_in)
 

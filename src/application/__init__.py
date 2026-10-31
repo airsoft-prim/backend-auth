@@ -1,7 +1,7 @@
 from ._base import AbstractUseCase
 from .auth import GetUser, LoginUser, RegisterUser
 from .jwk import CollectJwks, RotateJwk
-from .token import Authorize, EnsureTokenActive, IssueAccessToken, RevokeToken, VerifyAccessToken
+from .token import Authorize, EnsureTokenActive, RevokeToken, SignToken, VerifyToken
 
 __all__ = [
     "AbstractUseCase",
@@ -9,10 +9,10 @@ __all__ = [
     "CollectJwks",
     "EnsureTokenActive",
     "GetUser",
-    "IssueAccessToken",
     "LoginUser",
     "RegisterUser",
     "RevokeToken",
     "RotateJwk",
-    "VerifyAccessToken",
+    "SignToken",
+    "VerifyToken",
 ]

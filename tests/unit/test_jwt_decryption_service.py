@@ -8,22 +8,25 @@ import jwt
 from jwt import PyJWK
 import pytest
 
+from src.adapters.filesystem.repositories import FilePrivateJwkRepository
 from src.application.jwk import RotateJwk
-from src.application.token import IssueAccessToken, VerifyAccessToken
+from src.application.token import SignToken, VerifyToken
 from src.config import config
 from src.domain.errors import JWTDecryptionError
+from src.domain.tokens import AccessTokenConfig
 from tests.doubles import InMemoryRedis
 from tests.unit.conftest import RawTokenSigner
 
 SUBJECT = 42
 SUBJECT_ROLE = "moderator"
+SID = "session-under-test"
 TOKEN_ID = "token-under-test"  # noqa: S105
 TTL_SECONDS = 3600
 HS256_SECRET = "hs256-secret"  # noqa: S105
 
 
 def _claims() -> dict[str, Any]:
-    """Собирает корректный набор claims access-токена без необязательной роли.
+    """Собирает корректный набор claims access-токена без роли.
 
     Returns:
         dict[str, Any]: Claims с издателем, аудиторией, субъектом и временем жизни.
@@ -37,6 +40,7 @@ def _claims() -> dict[str, Any]:
         "iat": issued_at,
         "exp": issued_at + TTL_SECONDS,
         "jti": TOKEN_ID,
+        "sid": SID,
     }
 
 
@@ -59,9 +63,9 @@ def _key_id(public_key: PyJWK) -> str:
     return public_key.key_id
 
 
-async def test_decrypt_returns_claims_of_valid_token(
-    issue_access_token: IssueAccessToken,
-    verify_access_token: VerifyAccessToken,
+async def test_verify_returns_claims_of_valid_token(
+    sign_token: SignToken,
+    verify_token: VerifyToken,
     rotate_jwk: RotateJwk,
 ) -> None:
     """Проверка корректного токена.
@@ -72,10 +76,10 @@ async def test_decrypt_returns_claims_of_valid_token(
     """
     # Дано
     published = await rotate_jwk(TTL_SECONDS)
-    token, _ = await issue_access_token(SUBJECT, SUBJECT_ROLE, token_id=TOKEN_ID)
+    token, _ = await sign_token(SUBJECT, SID, not_required={"srl": SUBJECT_ROLE})
 
     # Когда
-    claims = await verify_access_token(token)
+    claims = await verify_token(token)
 
     # Тогда
     assert jwt.get_unverified_header(token)["kid"] == _key_id(published)
@@ -83,12 +87,12 @@ async def test_decrypt_returns_claims_of_valid_token(
     assert claims["aud"] == config.app.PROJECT
     assert claims["sub"] == str(SUBJECT)
     assert claims["srl"] == SUBJECT_ROLE
-    assert claims["jti"] == TOKEN_ID
+    assert claims["jti"]
     assert claims["exp"] > claims["iat"]
 
 
-async def test_decrypt_accepts_token_without_optional_role(
-    verify_access_token: VerifyAccessToken,
+async def test_verify_accepts_token_without_optional_role(
+    verify_token: VerifyToken,
     rotate_jwk: RotateJwk,
     raw_token_signer: RawTokenSigner,
 ) -> None:
@@ -103,16 +107,16 @@ async def test_decrypt_accepts_token_without_optional_role(
     token = raw_token_signer(_claims(), _key_id(published))
 
     # Когда
-    claims = await verify_access_token(token)
+    claims = await verify_token(token)
 
     # Тогда
     assert "srl" not in claims
     assert claims["sub"] == str(SUBJECT)
 
 
-async def test_decrypt_rejects_token_whose_key_is_not_published(
-    issue_access_token: IssueAccessToken,
-    verify_access_token: VerifyAccessToken,
+async def test_verify_rejects_token_whose_key_is_not_published(
+    sign_token: SignToken,
+    verify_token: VerifyToken,
     rotate_jwk: RotateJwk,
     redis_double: InMemoryRedis,
 ) -> None:
@@ -124,17 +128,17 @@ async def test_decrypt_rejects_token_whose_key_is_not_published(
     """
     # Дано
     await rotate_jwk(TTL_SECONDS)
-    token, _ = await issue_access_token(SUBJECT)
+    token, _ = await sign_token(SUBJECT, SID, not_required={"srl": SUBJECT_ROLE})
     redis_double.values.clear()
 
     # Когда / Тогда
     with pytest.raises(JWTDecryptionError, match="signing key is not published"):
-        await verify_access_token(token)
+        await verify_token(token)
 
 
-async def test_decrypt_rejects_token_with_broken_signature(
-    issue_access_token: IssueAccessToken,
-    verify_access_token: VerifyAccessToken,
+async def test_verify_rejects_token_with_broken_signature(
+    sign_token: SignToken,
+    verify_token: VerifyToken,
     rotate_jwk: RotateJwk,
 ) -> None:
     """Проверка токена с изменённой подписью.
@@ -145,20 +149,20 @@ async def test_decrypt_rejects_token_with_broken_signature(
     """
     # Дано
     await rotate_jwk(TTL_SECONDS)
-    token, _ = await issue_access_token(SUBJECT)
+    token, _ = await sign_token(SUBJECT, SID, not_required={"srl": SUBJECT_ROLE})
     header, payload, signature = token.split(".")
     replacement = "A" if signature[0] != "A" else "B"
     broken = ".".join((header, payload, replacement + signature[1:]))
 
     # Когда / Тогда
     with pytest.raises(JWTDecryptionError, match="Token is invalid"):
-        await verify_access_token(broken)
+        await verify_token(broken)
 
 
-async def test_decrypt_rejects_expired_token(
-    issue_access_token: IssueAccessToken,
-    verify_access_token: VerifyAccessToken,
+async def test_verify_rejects_expired_token(
+    verify_token: VerifyToken,
     rotate_jwk: RotateJwk,
+    private_jwk_repository: FilePrivateJwkRepository,
 ) -> None:
     """Проверка просроченного токена.
 
@@ -168,15 +172,19 @@ async def test_decrypt_rejects_expired_token(
     """
     # Дано
     await rotate_jwk(TTL_SECONDS)
-    token, _ = await issue_access_token(SUBJECT, ttl=-1)
+    expired = SignToken(
+        AccessTokenConfig(issuer=config.app.NAME, audience=config.app.PROJECT, ttl=-1),
+        private_jwk_repository,
+    )
+    token, _ = await expired(SUBJECT, SID, not_required={"srl": SUBJECT_ROLE})
 
     # Когда / Тогда
     with pytest.raises(JWTDecryptionError, match="Token is invalid"):
-        await verify_access_token(token)
+        await verify_token(token)
 
 
-async def test_decrypt_rejects_token_without_key_id(
-    verify_access_token: VerifyAccessToken,
+async def test_verify_rejects_token_without_key_id(
+    verify_token: VerifyToken,
     rotate_jwk: RotateJwk,
     raw_token_signer: RawTokenSigner,
 ) -> None:
@@ -192,10 +200,10 @@ async def test_decrypt_rejects_token_without_key_id(
 
     # Когда / Тогда
     with pytest.raises(JWTDecryptionError, match="does not contain a key ID"):
-        await verify_access_token(token)
+        await verify_token(token)
 
 
-async def test_decrypt_rejects_malformed_token(verify_access_token: VerifyAccessToken) -> None:
+async def test_verify_rejects_malformed_token(verify_token: VerifyToken) -> None:
     """Проверка строки, не являющейся JWT.
 
     Given: вместо токена передана произвольная строка,
@@ -204,11 +212,11 @@ async def test_decrypt_rejects_malformed_token(verify_access_token: VerifyAccess
     """
     # Когда / Тогда
     with pytest.raises(JWTDecryptionError, match="Token header is invalid"):
-        await verify_access_token("not-a-jwt")
+        await verify_token("not-a-jwt")
 
 
-async def test_decrypt_rejects_token_without_required_claim(
-    verify_access_token: VerifyAccessToken,
+async def test_verify_rejects_token_without_required_claim(
+    verify_token: VerifyToken,
     rotate_jwk: RotateJwk,
     raw_token_signer: RawTokenSigner,
 ) -> None:
@@ -226,11 +234,11 @@ async def test_decrypt_rejects_token_without_required_claim(
 
     # Когда / Тогда
     with pytest.raises(JWTDecryptionError, match="Token is invalid"):
-        await verify_access_token(token)
+        await verify_token(token)
 
 
-async def test_decrypt_rejects_token_with_foreign_issuer(
-    verify_access_token: VerifyAccessToken,
+async def test_verify_rejects_token_with_foreign_issuer(
+    verify_token: VerifyToken,
     rotate_jwk: RotateJwk,
     raw_token_signer: RawTokenSigner,
 ) -> None:
@@ -247,11 +255,11 @@ async def test_decrypt_rejects_token_with_foreign_issuer(
 
     # Когда / Тогда
     with pytest.raises(JWTDecryptionError, match="Token is invalid"):
-        await verify_access_token(token)
+        await verify_token(token)
 
 
-async def test_decrypt_rejects_token_with_foreign_audience(
-    verify_access_token: VerifyAccessToken,
+async def test_verify_rejects_token_with_foreign_audience(
+    verify_token: VerifyToken,
     rotate_jwk: RotateJwk,
     raw_token_signer: RawTokenSigner,
 ) -> None:
@@ -268,11 +276,11 @@ async def test_decrypt_rejects_token_with_foreign_audience(
 
     # Когда / Тогда
     with pytest.raises(JWTDecryptionError, match="Token is invalid"):
-        await verify_access_token(token)
+        await verify_token(token)
 
 
-async def test_decrypt_rejects_token_with_foreign_algorithm(
-    verify_access_token: VerifyAccessToken,
+async def test_verify_rejects_token_with_foreign_algorithm(
+    verify_token: VerifyToken,
     rotate_jwk: RotateJwk,
 ) -> None:
     """Проверка токена, подписанного другим алгоритмом.
@@ -292,11 +300,11 @@ async def test_decrypt_rejects_token_with_foreign_algorithm(
 
     # Когда / Тогда
     with pytest.raises(JWTDecryptionError, match="Token is invalid"):
-        await verify_access_token(token)
+        await verify_token(token)
 
 
-async def test_decrypt_rejects_invalid_published_key(
-    verify_access_token: VerifyAccessToken,
+async def test_verify_rejects_invalid_published_key(
+    verify_token: VerifyToken,
     rotate_jwk: RotateJwk,
     raw_token_signer: RawTokenSigner,
     redis_double: InMemoryRedis,
@@ -315,4 +323,4 @@ async def test_decrypt_rejects_invalid_published_key(
 
     # Когда / Тогда
     with pytest.raises(JWTDecryptionError, match="Token is invalid"):
-        await verify_access_token(token)
+        await verify_token(token)

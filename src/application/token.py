@@ -1,6 +1,6 @@
+from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Final, cast
-from uuid import uuid4
+from typing import Any, cast
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -8,7 +8,6 @@ import jwt
 from jwt import PyJWK
 
 from src.application.security import SIGNING_ALGORITHM, key_to_jwk
-from src.domain.entities import AccessTokenClaims
 from src.domain.enums import TokenType
 from src.domain.errors import (
     JWTDecryptionError,
@@ -17,60 +16,34 @@ from src.domain.errors import (
     UserAuthorizationError,
 )
 from src.domain.ports import PrivateJwkRepository, PublicJwkRepository, RevokedTokensRepository
+from src.domain.tokens import AccessTokenClaims, TokenConfig
 
 from ._base import AbstractUseCase
 
-TOKEN_TYPE: Final[str] = "JWT"  # noqa: S105
 
-# Без любого из этих claims токен считается неполным, даже если подпись верна.
-REQUIRED_CLAIMS: Final[tuple[str, ...]] = ("iss", "sub", "aud", "exp", "iat", "jti")
+class SignToken(AbstractUseCase):
+    """Use case подписи JWT-токена."""
 
-
-class IssueAccessToken(AbstractUseCase):
-    """Use case выпуска подписанных JWT-токенов."""
-
-    def __init__(
-        self,
-        private_key_repository: PrivateJwkRepository,
-        *,
-        issuer: str,
-        audience: str,
-        ttl: int,
-    ) -> None:
+    def __init__(self, config: TokenConfig, key_repository: PrivateJwkRepository) -> None:
         """Инициализация класса.
 
         Args:
-            private_key_repository (PrivateJwkRepository): Порт приватного ключа подписи.
-            issuer (str): Издатель токена — claim `iss`.
-            audience (str): Аудитория по умолчанию — claim `aud`.
-            ttl (int): Срок жизни токена в секундах по умолчанию.
+            config (TokenConfig): Конфигурация выпускаемого токена.
+            key_repository (PrivateJwkRepository): Порт приватного ключа подписи.
         """
-        self._private_key = private_key_repository
-        self._issuer = issuer
-        self._audience = audience
-        self._ttl = ttl
+        self._config = config
+        self._private_key = key_repository
 
     async def __call__(
-        self,
-        subject: int | str,
-        subject_role: str | None = None,
-        *,
-        token_id: str | None = None,
-        audience: str | None = None,
-        ttl: int | None = None,
+        self, subject: int | str, session: str, *, not_required: Mapping[str, Any] | None = None
     ) -> tuple[str, int]:
-        """Подписывает access-токен.
+        """Подписывает токен по конфигурации.
 
         Args:
             subject (int | str): Идентификатор пользователя (`sub`).
-                В JWT он всегда строка, поэтому число приводится к тексту.
-            subject_role (str | None, optional): Системная роль пользователя. `None` —
-                необязательный claim `srl` в токен не добавляется. Defaults to None.
-            token_id (str | None, optional): Идентификатор токена (`jti`).
-                Если передано None — генерируется новый. Defaults to None.
-            audience (str, optional): Аудитория токена (`aud`).  Defaults to None.
-            ttl (int | None): Срок жизни токена в секундах вместо заданного
-                при инициализации. Defaults to None.
+            session (str): Идентификатор сессии.
+            not_required (Mapping[str, Any] | None, optional): Дополнительные claims,
+                объединяемые с базовыми через `|`. Defaults to None.
 
         Raises:
             JWTEncryptionError: Файл ключа отсутствует, не читается как PEM или
@@ -82,31 +55,15 @@ class IssueAccessToken(AbstractUseCase):
         private_key = await self._acquire_private_key()
         key_id = key_to_jwk(private_key)["kid"]
 
-        issued_at = int(datetime.now(UTC).timestamp())
+        headers = self._config.build_headers(key_id)
+        claims = self._config.build_claims(subject, session)
 
-        lifetime = ttl if ttl is not None else self._ttl
-        expiration = issued_at + lifetime
+        if not_required:
+            claims = claims | not_required
 
-        claims = {
-            "iss": self._issuer,
-            "sub": str(subject),
-            "aud": audience or self._audience,
-            "iat": issued_at,
-            "exp": expiration,
-            "jti": token_id if token_id is not None else uuid4().hex,
-        }
+        token = jwt.encode(claims, private_key, algorithm=SIGNING_ALGORITHM, headers=dict(headers))
 
-        if subject_role is not None:
-            claims["srl"] = subject_role
-
-        headers = {
-            "typ": TOKEN_TYPE,
-            "kid": key_id,
-        }
-
-        token = jwt.encode(claims, private_key, algorithm=SIGNING_ALGORITHM, headers=headers)
-
-        return token, lifetime
+        return token, self._config.ttl
 
     async def _acquire_private_key(self) -> Ed25519PrivateKey:
         """Читает приватный ключ подписи из keyfile.
@@ -136,34 +93,26 @@ class IssueAccessToken(AbstractUseCase):
         return private_key
 
 
-class VerifyAccessToken(AbstractUseCase):
-    """Use case проверки подписанных JWT-токенов."""
+class VerifyToken(AbstractUseCase):
+    """Use case проверки подписанного JWT-токена."""
 
-    def __init__(
-        self,
-        public_key_repository: PublicJwkRepository,
-        *,
-        issuer: str,
-        audience: str,
-    ) -> None:
+    def __init__(self, config: TokenConfig, key_repository: PublicJwkRepository) -> None:
         """Инициализация класса.
 
         Args:
-            public_key_repository (PublicJwkRepository): Порт опубликованных публичных JWK.
-            issuer (str): Ожидаемый издатель токена — claim `iss`.
-            audience (str): Ожидаемая аудитория по умолчанию — claim `aud`.
+            config (TokenConfig): Конфигурация проверяемого токена.
+            key_repository (PublicJwkRepository): Порт опубликованных публичных JWK.
         """
-        self._public_key = public_key_repository
-        self._issuer = issuer
-        self._audience = audience
+        self._config = config
+        self._public_key = key_repository
 
     async def __call__(self, token: str, *, audience: str | None = None) -> AccessTokenClaims:
-        """Проверяет access-токен и возвращает его claims.
+        """Проверяет токен и возвращает его claims.
 
         Args:
             token (str): Подписанный JWT.
             audience (str | None, optional): Ожидаемая аудитория вместо заданной
-                при инициализации. Defaults to None.
+                в конфигурации. Defaults to None.
 
         Raises:
             JWTDecryptionError: Заголовок повреждён, ключ не опубликован, подпись не
@@ -183,9 +132,9 @@ class VerifyAccessToken(AbstractUseCase):
                 token,
                 key=PyJWK.from_dict(jwk).key,
                 algorithms=[SIGNING_ALGORITHM],
-                audience=audience or self._audience,
-                issuer=self._issuer,
-                options={"require": list(REQUIRED_CLAIMS)},
+                audience=audience or self._config.audience,
+                issuer=self._config.issuer,
+                options={"require": list(self._config.required_claims())},
             )
 
         except jwt.PyJWTError as error:
@@ -283,11 +232,11 @@ class RevokeToken(AbstractUseCase):
 class Authorize(AbstractUseCase):
     """Use case авторизации запроса по Bearer-токену."""
 
-    def __init__(self, verify: VerifyAccessToken, ensure_active: EnsureTokenActive) -> None:
+    def __init__(self, verify: VerifyToken, ensure_active: EnsureTokenActive) -> None:
         """Инициализация класса.
 
         Args:
-            verify (VerifyAccessToken): Use case проверки JWT-токена.
+            verify (VerifyToken): Use case проверки JWT-токена.
             ensure_active (EnsureTokenActive): Use case проверки отзыва токена.
         """
         self._verify = verify

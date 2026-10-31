@@ -1,32 +1,34 @@
 """Тесты сервиса авторизации запросов по Bearer-токену."""
 
+import jwt
 import pytest
 
 from src.adapters.cache.repositories import RedisRevokedTokensRepository
 from src.application import (
     Authorize,
     EnsureTokenActive,
-    IssueAccessToken,
-    VerifyAccessToken,
+    SignToken,
+    VerifyToken,
 )
 from src.application.jwk import RotateJwk
 from src.domain.enums import TokenType
 from src.domain.errors import TokenRevokedError, UserAuthorizationError
 
 SUBJECT = 42
-TOKEN_ID = "authorization-token-under-test"  # noqa: S105
+SUBJECT_ROLE = "user"
+SID = "session-under-test"
 TTL_SECONDS = 3600
 
 
 @pytest.fixture
 def authorize(
-    verify_access_token: VerifyAccessToken,
+    verify_token: VerifyToken,
     blacklisted_tokens_repository: RedisRevokedTokensRepository,
 ) -> Authorize:
     """Отдаёт use case авторизации поверх подмены Redis.
 
     Args:
-        verify_access_token (VerifyAccessToken): Use case проверки токенов.
+        verify_token (VerifyToken): Use case проверки токенов.
         blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий
             отозванных токенов поверх подмены Redis.
 
@@ -34,29 +36,38 @@ def authorize(
         Authorize: Use case авторизации запроса.
     """
     ensure_active = EnsureTokenActive(blacklisted_tokens_repository)
-    return Authorize(verify_access_token, ensure_active)
+    return Authorize(verify_token, ensure_active)
 
 
 async def _issue_token(
     rotate_jwk: RotateJwk,
-    issue_access_token: IssueAccessToken,
-    *,
-    ttl: int = TTL_SECONDS,
+    sign_token: SignToken,
 ) -> str:
     """Публикует ключ и выпускает access-токен для проверки авторизации.
 
     Args:
         rotate_jwk (RotateJwk): Use case генерации и публикации ключей.
-        issue_access_token (IssueAccessToken): Use case выпуска токенов.
-        ttl (int, optional): Срок жизни токена в секундах. Defaults to TTL_SECONDS.
+        sign_token (SignToken): Use case выпуска токенов.
 
     Returns:
         str: Подписанный access-токен.
     """
     await rotate_jwk(TTL_SECONDS)
-    token, _ = await issue_access_token(SUBJECT, token_id=TOKEN_ID, ttl=ttl)
+    token, _ = await sign_token(SUBJECT, SID, not_required={"srl": SUBJECT_ROLE})
 
     return token
+
+
+def _token_jti(token: str) -> str:
+    """Возвращает `jti` токена без проверки подписи.
+
+    Args:
+        token (str): Подписанный JWT.
+
+    Returns:
+        str: Идентификатор токена (`jti`).
+    """
+    return jwt.decode(token, options={"verify_signature": False})["jti"]
 
 
 async def test_authorize_requires_token(
@@ -76,7 +87,7 @@ async def test_authorize_requires_token(
 async def test_authorize_returns_claims_of_valid_token(
     authorize: Authorize,
     rotate_jwk: RotateJwk,
-    issue_access_token: IssueAccessToken,
+    sign_token: SignToken,
 ) -> None:
     """Авторизация действующего токена.
 
@@ -85,20 +96,20 @@ async def test_authorize_returns_claims_of_valid_token(
     Then: он возвращает проверенные claims токена.
     """
     # Дано
-    token = await _issue_token(rotate_jwk, issue_access_token)
+    token = await _issue_token(rotate_jwk, sign_token)
 
     # Когда
     claims = await authorize(token)
 
     # Тогда
     assert claims["sub"] == str(SUBJECT)
-    assert claims["jti"] == TOKEN_ID
+    assert claims["jti"]
 
 
 async def test_authorize_rejects_revoked_token(
     authorize: Authorize,
     rotate_jwk: RotateJwk,
-    issue_access_token: IssueAccessToken,
+    sign_token: SignToken,
     blacklisted_tokens_repository: RedisRevokedTokensRepository,
 ) -> None:
     """Авторизация отозванного токена.
@@ -108,10 +119,10 @@ async def test_authorize_rejects_revoked_token(
     Then: он сообщает, что токен отозван.
     """
     # Дано
-    token = await _issue_token(rotate_jwk, issue_access_token)
+    token = await _issue_token(rotate_jwk, sign_token)
     await blacklisted_tokens_repository.store(
         token_type=TokenType.ACCESS,
-        token_id=TOKEN_ID,
+        token_id=_token_jti(token),
         ttl=TTL_SECONDS,
     )
 

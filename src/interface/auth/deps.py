@@ -19,13 +19,14 @@ from src.application.auth import GetUser, LoginUser, RegisterUser
 from src.application.token import (
     Authorize,
     EnsureTokenActive,
-    IssueAccessToken,
     RevokeToken,
-    VerifyAccessToken,
+    SignToken,
+    VerifyToken,
 )
 from src.config import config
-from src.domain.entities import AccessTokenClaims, User
+from src.domain.entities import User
 from src.domain.errors import JWTDecryptionError
+from src.domain.tokens import AccessTokenClaims, AccessTokenConfig
 from src.interface._protection import schema
 
 
@@ -71,38 +72,42 @@ async def get_user(
     return GetUser(SqlAlchemyUserRepository(session))
 
 
-async def get_issue_access_token() -> IssueAccessToken:
-    """Предоставляет use case выпуска access-токена.
+def _access_token_config() -> AccessTokenConfig:
+    """Собирает конфигурацию access-токена из настроек приложения.
 
     Returns:
-        IssueAccessToken: Use case выпуска JWT-токена.
+        AccessTokenConfig: Конфигурация access-токена.
     """
-    private_key_repo = FilePrivateJwkRepository(FileSystem(config.security.KEY_STORE_DIRECTORY))
-
-    return IssueAccessToken(
-        private_key_repository=private_key_repo,
+    return AccessTokenConfig(
         issuer=config.app.NAME,
         audience=config.app.PROJECT,
         ttl=config.security.ACCESS_TOKEN_TTL,
     )
 
 
-async def get_verify_access_token(
+async def get_sign_token() -> SignToken:
+    """Предоставляет use case подписи токена.
+
+    Returns:
+        SignToken: Use case подписи JWT-токена.
+    """
+    private_key_repo = FilePrivateJwkRepository(FileSystem(config.security.KEY_STORE_DIRECTORY))
+
+    return SignToken(_access_token_config(), private_key_repo)
+
+
+async def get_verify_token(
     client: Annotated[Redis, Depends(get_bounded_client(StorageNumber.KEYS.value))],
-) -> VerifyAccessToken:
-    """Предоставляет use case проверки access-токена на время запроса.
+) -> VerifyToken:
+    """Предоставляет use case проверки токена на время запроса.
 
     Args:
         client (Redis): Клиент Redis с опубликованными публичными JWK.
 
     Returns:
-        VerifyAccessToken: Use case проверки JWT-токена.
+        VerifyToken: Use case проверки JWT-токена.
     """
-    return VerifyAccessToken(
-        public_key_repository=RedisPublicJwkRepository(client),
-        issuer=config.app.NAME,
-        audience=config.app.PROJECT,
-    )
+    return VerifyToken(_access_token_config(), RedisPublicJwkRepository(client))
 
 
 async def get_ensure_token_active(
@@ -134,13 +139,13 @@ async def get_revoke_token(
 
 
 async def get_authorize(
-    verify: Annotated[VerifyAccessToken, Depends(get_verify_access_token)],
+    verify: Annotated[VerifyToken, Depends(get_verify_token)],
     ensure_active: Annotated[EnsureTokenActive, Depends(get_ensure_token_active)],
 ) -> Authorize:
     """Предоставляет use case авторизации запроса на время запроса.
 
     Args:
-        verify (VerifyAccessToken): Use case проверки JWT-токена.
+        verify (VerifyToken): Use case проверки JWT-токена.
         ensure_active (EnsureTokenActive): Use case проверки отзыва токена.
 
     Returns:
@@ -167,7 +172,7 @@ async def get_access_token(
     Returns:
         AccessTokenClaims: Проверенные claims токена.
     """
-    token = credentials.credentials if credentials is not None else None
+    token = credentials.credentials if credentials else None
 
     return await authorize(token)
 
@@ -191,6 +196,7 @@ async def get_current_user(
     """
     try:
         user_id = int(claims["sub"])
+
     except (TypeError, ValueError) as error:
         msg = "Token subject is invalid."
         raise JWTDecryptionError(msg) from error

@@ -20,8 +20,9 @@ from src.adapters.filesystem import FileSystem
 from src.adapters.filesystem.repositories import FilePrivateJwkRepository
 from src.app import application
 from src.application.jwk import CollectJwks, RotateJwk
-from src.application.token import IssueAccessToken, VerifyAccessToken
+from src.application.token import SignToken, VerifyToken
 from src.config import config
+from src.domain.tokens import AccessTokenConfig
 from src.interface.well_known.deps import get_collect_jwks
 from tests.asgi_client import ASGIClient
 from tests.doubles import InMemoryRedis, as_redis
@@ -32,7 +33,6 @@ __all__ = [
     "blacklisted_tokens_repository",
     "collect_jwks",
     "file_system",
-    "issue_access_token",
     "jwk_repository",
     "jwks_client",
     "key_store_dir",
@@ -40,8 +40,9 @@ __all__ = [
     "private_jwk_repository",
     "redis_double",
     "rotate_jwk",
+    "sign_token",
     "unavailable_repository",
-    "verify_access_token",
+    "verify_token",
 ]
 
 
@@ -198,40 +199,43 @@ def collect_jwks(jwk_repository: RedisPublicJwkRepository) -> CollectJwks:
 
 
 @pytest.fixture
-def issue_access_token(
+def sign_token(
     private_jwk_repository: FilePrivateJwkRepository,
-) -> IssueAccessToken:
+) -> SignToken:
     """Отдаёт use case выпуска токенов поверх keyfile.
 
     Args:
         private_jwk_repository (FilePrivateJwkRepository): Репозиторий приватного ключа.
 
     Returns:
-        IssueAccessToken: Use case подписи access-токенов.
+        SignToken: Use case подписи access-токенов.
     """
-    return IssueAccessToken(
-        private_key_repository=private_jwk_repository,
+    token_config = AccessTokenConfig(
         issuer=config.app.NAME,
         audience=config.app.PROJECT,
         ttl=config.security.ACCESS_TOKEN_TTL,
     )
 
+    return SignToken(token_config, private_jwk_repository)
+
 
 @pytest.fixture
-def verify_access_token(jwk_repository: RedisPublicJwkRepository) -> VerifyAccessToken:
+def verify_token(jwk_repository: RedisPublicJwkRepository) -> VerifyToken:
     """Отдаёт use case проверки токенов поверх подмены Redis.
 
     Args:
         jwk_repository (RedisPublicJwkRepository): Репозиторий публичных ключей.
 
     Returns:
-        VerifyAccessToken: Use case проверки access-токенов.
+        VerifyToken: Use case проверки access-токенов.
     """
-    return VerifyAccessToken(
-        public_key_repository=jwk_repository,
+    token_config = AccessTokenConfig(
         issuer=config.app.NAME,
         audience=config.app.PROJECT,
+        ttl=config.security.ACCESS_TOKEN_TTL,
     )
+
+    return VerifyToken(token_config, jwk_repository)
 
 
 @pytest.fixture
