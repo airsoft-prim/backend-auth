@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from typing import Protocol
 
-from src.domain.entities import User
+from src.domain.entities import Session, User
 from src.domain.enums import TokenType
 
 # Публичный JWK в этом сервисе — набор строковых параметров (RFC 7517).
@@ -49,8 +49,22 @@ class PrivateJwkRepository(Protocol):
 
 
 class RevokedTokensRepository(Protocol):
-    """Порт доступа к отозванным токенам."""
+    """Порт доступа к отозванным токенам и сессиям."""
 
     async def store(self, token_type: TokenType, token_id: str, ttl: int) -> None: ...
 
     async def check(self, token_type: TokenType, token_id: str) -> bool: ...
+
+    async def store_session(self, sid: str, ttl: int) -> None: ...
+
+    async def check_session(self, sid: str) -> bool: ...
+
+
+class SessionRepository(Protocol):
+    """Порт доступа к сессиям пользователей."""
+
+    async def save(self, session: Session) -> None: ...
+
+    async def get(self, sid: str) -> Session | None: ...
+
+    async def list_active(self, user_id: int) -> Sequence[Session]: ...

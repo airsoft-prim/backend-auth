@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Cookie, Depends
 from fastapi.security import HTTPAuthorizationCredentials
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +9,7 @@ from src.adapters.cache import StorageNumber, get_bounded_client
 from src.adapters.cache.repositories import (
     RedisPublicJwkRepository,
     RedisRevokedTokensRepository,
+    RedisSessionRepository,
 )
 from src.adapters.crypto.hasher import PASSWORD_HASHER
 from src.adapters.database import get_session
@@ -16,17 +17,27 @@ from src.adapters.database.repositories import SqlAlchemyUserRepository
 from src.adapters.filesystem import FileSystem
 from src.adapters.filesystem.repositories import FilePrivateJwkRepository
 from src.application.auth import GetUser, LoginUser, RegisterUser
+from src.application.session import CreateSession, SlideSession
 from src.application.token import (
     Authorize,
     EnsureTokenActive,
+    IssueTokenPair,
+    RevokeSession,
     RevokeToken,
+    RotateRefreshToken,
     SignToken,
     VerifyToken,
 )
 from src.config import config
 from src.domain.entities import User
+from src.domain.enums import TokenType
 from src.domain.errors import JWTDecryptionError
-from src.domain.tokens import AccessTokenClaims, AccessTokenConfig
+from src.domain.tokens import (
+    AccessTokenClaims,
+    AccessTokenConfig,
+    RefreshTokenClaims,
+    RefreshTokenConfig,
+)
 from src.interface._protection import schema
 
 
@@ -85,8 +96,21 @@ def _access_token_config() -> AccessTokenConfig:
     )
 
 
-async def get_sign_token() -> SignToken:
-    """Предоставляет use case подписи токена.
+def _refresh_token_config() -> RefreshTokenConfig:
+    """Собирает конфигурацию refresh-токена из настроек приложения.
+
+    Returns:
+        RefreshTokenConfig: Конфигурация refresh-токена.
+    """
+    return RefreshTokenConfig(
+        issuer=config.app.NAME,
+        audience=config.app.NAME,
+        ttl=config.security.REFRESH_TOKEN_TTL,
+    )
+
+
+async def get_sign_access_token() -> SignToken:
+    """Предоставляет use case подписи access-токена.
 
     Returns:
         SignToken: Use case подписи JWT-токена.
@@ -96,18 +120,59 @@ async def get_sign_token() -> SignToken:
     return SignToken(_access_token_config(), private_key_repo)
 
 
-async def get_verify_token(
+async def get_sign_refresh_token() -> SignToken:
+    """Предоставляет use case подписи refresh-токена.
+
+    Returns:
+        SignToken: Use case подписи JWT-токена.
+    """
+    private_key_repo = FilePrivateJwkRepository(FileSystem(config.security.KEY_STORE_DIRECTORY))
+
+    return SignToken(_refresh_token_config(), private_key_repo)
+
+
+async def get_issue_token_pair(
+    access: Annotated[SignToken, Depends(get_sign_access_token)],
+    refresh: Annotated[SignToken, Depends(get_sign_refresh_token)],
+) -> IssueTokenPair:
+    """Предоставляет use case выпуска пары токенов на время запроса.
+
+    Args:
+        access (SignToken): Use case подписи access-токена.
+        refresh (SignToken): Use case подписи refresh-токена.
+
+    Returns:
+        IssueTokenPair: Use case выпуска access- и refresh-токенов.
+    """
+    return IssueTokenPair(access, refresh)
+
+
+async def get_verify_access_token(
     client: Annotated[Redis, Depends(get_bounded_client(StorageNumber.KEYS.value))],
-) -> VerifyToken:
-    """Предоставляет use case проверки токена на время запроса.
+) -> VerifyToken[AccessTokenClaims]:
+    """Предоставляет use case проверки access-токена на время запроса.
 
     Args:
         client (Redis): Клиент Redis с опубликованными публичными JWK.
 
     Returns:
-        VerifyToken: Use case проверки JWT-токена.
+        VerifyToken[AccessTokenClaims]: Use case проверки JWT-токена.
     """
     return VerifyToken(_access_token_config(), RedisPublicJwkRepository(client))
+
+
+async def get_verify_refresh_token(
+    client: Annotated[Redis, Depends(get_bounded_client(StorageNumber.KEYS.value))],
+) -> VerifyToken[RefreshTokenClaims]:
+    """Предоставляет use case проверки refresh-токена на время запроса.
+
+    Args:
+        client (Redis): Клиент Redis с опубликованными публичными JWK.
+
+    Returns:
+        VerifyToken[RefreshTokenClaims]: Use case проверки JWT-токена.
+    """
+    return VerifyToken(_refresh_token_config(), RedisPublicJwkRepository(client))
 
 
 async def get_ensure_token_active(
@@ -124,39 +189,122 @@ async def get_ensure_token_active(
     return EnsureTokenActive(RedisRevokedTokensRepository(client))
 
 
+async def get_revoke_session(
+    tokens_client: Annotated[Redis, Depends(get_bounded_client(StorageNumber.TOKENS.value))],
+    sessions_client: Annotated[Redis, Depends(get_bounded_client(StorageNumber.SESSIONS.value))],
+) -> RevokeSession:
+    """Предоставляет use case отзыва сессии на время запроса.
+
+    Args:
+        tokens_client (Redis): Клиент Redis с отозванными сессиями и токенами.
+        sessions_client (Redis): Клиент Redis с сессиями пользователей.
+
+    Returns:
+        RevokeSession: Use case отзыва сессии.
+    """
+    return RevokeSession(
+        RedisRevokedTokensRepository(tokens_client),
+        RedisSessionRepository(sessions_client),
+    )
+
+
 async def get_revoke_token(
     client: Annotated[Redis, Depends(get_bounded_client(StorageNumber.TOKENS.value))],
 ) -> RevokeToken:
-    """Предоставляет use case отзыва токена на время запроса.
+    """Предоставляет use case отзыва отдельного токена на время запроса.
 
     Args:
         client (Redis): Клиент Redis с отозванными токенами.
 
     Returns:
-        RevokeToken: Use case отзыва токена.
+        RevokeToken: Use case отзыва токена по `jti`.
     """
     return RevokeToken(RedisRevokedTokensRepository(client))
 
 
-async def get_authorize(
-    verify: Annotated[VerifyToken, Depends(get_verify_token)],
-    ensure_active: Annotated[EnsureTokenActive, Depends(get_ensure_token_active)],
-) -> Authorize:
-    """Предоставляет use case авторизации запроса на время запроса.
+async def get_create_session(
+    client: Annotated[Redis, Depends(get_bounded_client(StorageNumber.SESSIONS.value))],
+) -> CreateSession:
+    """Предоставляет use case создания сессии на время запроса.
 
     Args:
-        verify (VerifyToken): Use case проверки JWT-токена.
+        client (Redis): Клиент Redis с сессиями пользователей.
+
+    Returns:
+        CreateSession: Use case создания сессии с лимитом активных сессий.
+    """
+    return CreateSession(
+        RedisSessionRepository(client),
+        config.security.REFRESH_TOKEN_TTL,
+        config.security.MAX_ACTIVE_SESSIONS,
+    )
+
+
+async def get_slide_session(
+    client: Annotated[Redis, Depends(get_bounded_client(StorageNumber.SESSIONS.value))],
+) -> SlideSession:
+    """Предоставляет use case продления сессии на время запроса.
+
+    Args:
+        client (Redis): Клиент Redis с сессиями пользователей.
+
+    Returns:
+        SlideSession: Use case продления сессии (sliding expiration).
+    """
+    return SlideSession(RedisSessionRepository(client), config.security.REFRESH_TOKEN_TTL)
+
+
+async def get_rotate_refresh_token(
+    slide: Annotated[SlideSession, Depends(get_slide_session)],
+    revoke: Annotated[RevokeToken, Depends(get_revoke_token)],
+) -> RotateRefreshToken:
+    """Предоставляет use case ротации refresh-токена на время запроса.
+
+    Args:
+        slide (SlideSession): Use case продления сессии.
+        revoke (RevokeToken): Use case отзыва старого refresh-токена.
+
+    Returns:
+        RotateRefreshToken: Use case ротации refresh-токена.
+    """
+    return RotateRefreshToken(slide, revoke)
+
+
+async def get_authorize_access(
+    verify: Annotated[VerifyToken[AccessTokenClaims], Depends(get_verify_access_token)],
+    ensure_active: Annotated[EnsureTokenActive, Depends(get_ensure_token_active)],
+) -> Authorize[AccessTokenClaims]:
+    """Предоставляет use case авторизации по access-токену на время запроса.
+
+    Args:
+        verify (VerifyToken[AccessTokenClaims]): Use case проверки access-токена.
         ensure_active (EnsureTokenActive): Use case проверки отзыва токена.
 
     Returns:
-        Authorize: Use case проверки Bearer-токена и его отзыва.
+        Authorize[AccessTokenClaims]: Use case проверки Bearer-токена и его отзыва.
     """
-    return Authorize(verify, ensure_active)
+    return Authorize(verify, ensure_active, TokenType.ACCESS)
+
+
+async def get_authorize_refresh(
+    verify: Annotated[VerifyToken[RefreshTokenClaims], Depends(get_verify_refresh_token)],
+    ensure_active: Annotated[EnsureTokenActive, Depends(get_ensure_token_active)],
+) -> Authorize[RefreshTokenClaims]:
+    """Предоставляет use case авторизации по refresh-токену на время запроса.
+
+    Args:
+        verify (VerifyToken[RefreshTokenClaims]): Use case проверки refresh-токена.
+        ensure_active (EnsureTokenActive): Use case проверки отзыва токена.
+
+    Returns:
+        Authorize[RefreshTokenClaims]: Use case проверки Bearer-токена и его отзыва.
+    """
+    return Authorize(verify, ensure_active, TokenType.REFRESH)
 
 
 async def get_access_token(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(schema)],
-    authorize: Annotated[Authorize, Depends(get_authorize)],
+    authorize: Annotated[Authorize[AccessTokenClaims], Depends(get_authorize_access)],
 ) -> AccessTokenClaims:
     """Проверяет Bearer-токен и возвращает его claims.
 
@@ -175,6 +323,26 @@ async def get_access_token(
     token = credentials.credentials if credentials else None
 
     return await authorize(token)
+
+
+async def get_refresh_token(
+    authorize: Annotated[Authorize[RefreshTokenClaims], Depends(get_authorize_refresh)],
+    refresh_token: Annotated[str | None, Cookie()] = None,
+) -> RefreshTokenClaims:
+    """Проверяет refresh-токен из cookie и возвращает его claims.
+
+    Args:
+        authorize (Authorize[RefreshTokenClaims]): Use case авторизации по refresh-токену.
+        refresh_token (str | None): Refresh-токен из HTTP-only cookie.
+
+    Raises:
+        UserAuthorizationError: Refresh-токен не передан.
+        JWTDecryptionError: Токен недействителен или уже отозван.
+
+    Returns:
+        RefreshTokenClaims: Проверенные claims refresh-токена.
+    """
+    return await authorize(refresh_token)
 
 
 async def get_current_user(

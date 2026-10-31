@@ -73,28 +73,20 @@ class TokenConfig[ClaimsT]:
     def build_headers(self, kid: str) -> TokenHeaders:
         """Собирает заголовок JWT-токена.
 
-        `typ` берётся из `token_type` конфигурации, `kid` адресует ключ подписи.
-
         Args:
             kid (str): Идентификатор ключа подписи.
 
         Returns:
             TokenHeaders: Заголовок JWT-токена.
         """
-        return {
-            "typ": self.token_type,
-            "kid": kid,
-        }
+        return {"typ": self.token_type, "kid": kid}
 
-    def build_claims(self, subject: int | str, sid: str) -> ClaimsT:
+    def build_claims(self, subject: int | str, session: str) -> ClaimsT:
         """Собирает базовые claims токена.
-
-        `iat`/`exp`/`jti` вычисляются сами; `iss`/`aud` берутся из конфигурации.
-        Обязательны только `sub` и `sid`.
 
         Args:
             subject (int | str): Идентификатор пользователя (`sub`).
-            sid (str): Идентификатор сессии.
+            session (str): Идентификатор сессии (claim `sid`).
 
         Returns:
             ClaimsT: Базовые claims токена.
@@ -108,7 +100,7 @@ class TokenConfig[ClaimsT]:
             iat=issued_at,
             exp=self.expires_at(issued_at),
             jti=uuid4().hex,
-            sid=sid,
+            sid=session,
         )
 
 

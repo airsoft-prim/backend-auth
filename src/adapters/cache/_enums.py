@@ -9,3 +9,4 @@ class StorageNumber(Enum):
     DEFAULT = config.cache.DB
     KEYS = 1
     TOKENS = 2
+    SESSIONS = 3
