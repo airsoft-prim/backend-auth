@@ -11,6 +11,8 @@ from src.interface import main_router
 from src.interface.exc_handlers import register_exception_handlers
 from src.interface.middlewares import register_middlewares
 
+from ._version import __version__
+
 APP_DESCRIPTION: Final[str] = """
 Сервер аутентификации для портала Airsoft-Prim.
 """
@@ -33,10 +35,10 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
 
 
 application = FastAPI(
+    lifespan=lifespan,
     title=f"{config.app.PROJECT} | {config.app.NAME}",
     description=APP_DESCRIPTION,
-    version="0.1.0",
-    lifespan=lifespan,
+    version=__version__,
 )
 
 register_exception_handlers(application)
