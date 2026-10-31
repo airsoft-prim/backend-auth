@@ -3,8 +3,8 @@
 from fastapi import status
 import pytest
 
-from src.providers.cache.repositories import PublicJWKRepository
-from src.services.jwk import JWKGenerationService
+from src.adapters.cache.repositories import RedisPublicJwkRepository
+from src.application.jwk import RotateJwk
 from tests.asgi_client import ASGIClient
 from tests.interface.conftest import JWKSClientFactory
 
@@ -14,7 +14,7 @@ KEY_TTL_SECONDS = 3600
 
 async def test_get_jwks_returns_published_key(
     jwks_client: ASGIClient,
-    jwk_service: JWKGenerationService,
+    rotate_jwk: RotateJwk,
 ) -> None:
     """Набор публичных ключей подписи.
 
@@ -23,7 +23,7 @@ async def test_get_jwks_returns_published_key(
     Then: приходит 200 с опубликованным ключом и без приватной части.
     """
     # Дано
-    published = await jwk_service.generate_jwk(KEY_TTL_SECONDS)
+    published = await rotate_jwk(KEY_TTL_SECONDS)
 
     # Когда
     response = await jwks_client.get(JWKS_PATH)
@@ -82,7 +82,7 @@ async def test_jwks_denies_methods_other_than_get(
 
 async def test_get_jwks_fails_with_server_error_when_cache_is_unavailable(
     jwks_client_factory: JWKSClientFactory,
-    unavailable_repository: PublicJWKRepository,
+    unavailable_repository: RedisPublicJwkRepository,
 ) -> None:
     """Отказ кеша публичных ключей.
 

@@ -6,10 +6,10 @@ from fastapi import status
 import pytest
 from redis.asyncio import Redis
 
-from src.providers.cache.repositories import PublicJWKRepository
-from src.providers.filesystem import FileSystem
-from src.providers.filesystem.repositories import PrivateJWKRepository
-from src.services.jwk import JWKGenerationService
+from src.adapters.cache.repositories import RedisPublicJwkRepository
+from src.adapters.filesystem import FileSystem
+from src.adapters.filesystem.repositories import FilePrivateJwkRepository
+from src.application.jwk import RotateJwk
 from tests.asgi_client import ASGIClient
 
 JWKS_PATH = "/.well-known/jwks.json"
@@ -20,19 +20,19 @@ MILLISECONDS_PER_SECOND = 1000
 pytestmark = pytest.mark.integration
 
 
-def _service(key_store_dir: Path, redis_client: Redis) -> JWKGenerationService:
-    """Собирает сервис генерации ключей поверх настоящего Redis.
+def _service(key_store_dir: Path, redis_client: Redis) -> RotateJwk:
+    """Собирает use case ротации ключей поверх настоящего Redis.
 
     Args:
         key_store_dir (Path): Каталог приватного ключа подписи.
         redis_client (Redis): Клиент Redis.
 
     Returns:
-        JWKGenerationService: Сервис генерации и публикации ключей.
+        RotateJwk: Use case генерации и публикации ключей.
     """
-    return JWKGenerationService(
-        PrivateJWKRepository(FileSystem(key_store_dir)),
-        PublicJWKRepository(redis_client),
+    return RotateJwk(
+        FilePrivateJwkRepository(FileSystem(key_store_dir)),
+        RedisPublicJwkRepository(redis_client),
     )
 
 
@@ -48,8 +48,8 @@ async def test_jwks_endpoint_serves_key_published_in_redis(
     Then: эндпоинт отдаёт этот ключ без приватной части.
     """
     # Дано
-    service = _service(key_store_dir, redis_client)
-    published = await service.generate_jwk(KEY_TTL_SECONDS)
+    rotate_jwk = _service(key_store_dir, redis_client)
+    published = await rotate_jwk(KEY_TTL_SECONDS)
 
     # Когда
     try:
@@ -79,14 +79,14 @@ async def test_rotated_key_gets_time_to_live(
     Then: прошлый публичный ключ остаётся в Redis, но ограничен временем жизни.
     """
     # Дано
-    service = _service(key_store_dir, redis_client)
-    previous = await service.generate_jwk(KEY_TTL_SECONDS)
+    rotate_jwk = _service(key_store_dir, redis_client)
+    previous = await rotate_jwk(KEY_TTL_SECONDS)
     previous_name = f"jwk:{previous.key_id}"
     created = [previous_name]
 
     # Когда
     try:
-        rotated = await service.generate_jwk(KEY_TTL_SECONDS, overwrite=True)
+        rotated = await rotate_jwk(KEY_TTL_SECONDS, overwrite=True)
         created.append(f"jwk:{rotated.key_id}")
 
         ttl_in_ms = await redis_client.pttl(previous_name)
@@ -111,19 +111,19 @@ async def test_repeated_rotation_keeps_ttl_of_older_key(
     Then: срок этого ключа не сбрасывается на новый TTL.
     """
     # Дано
-    service = _service(key_store_dir, redis_client)
-    older = await service.generate_jwk(KEY_TTL_SECONDS)
+    rotate_jwk = _service(key_store_dir, redis_client)
+    older = await rotate_jwk(KEY_TTL_SECONDS)
     older_name = f"jwk:{older.key_id}"
     created = [older_name]
 
     # Когда
     try:
-        rotated = await service.generate_jwk(KEY_TTL_SECONDS, overwrite=True)
+        rotated = await rotate_jwk(KEY_TTL_SECONDS, overwrite=True)
         created.append(f"jwk:{rotated.key_id}")
 
         await redis_client.expire(older_name, SHORT_TTL_SECONDS)
 
-        repeated = await service.generate_jwk(KEY_TTL_SECONDS, overwrite=True)
+        repeated = await rotate_jwk(KEY_TTL_SECONDS, overwrite=True)
         created.append(f"jwk:{repeated.key_id}")
 
         ttl_in_ms = await redis_client.pttl(older_name)

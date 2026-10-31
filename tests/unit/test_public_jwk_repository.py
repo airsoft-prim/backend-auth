@@ -5,8 +5,8 @@ import json
 from jwt.types import JWKDict
 import pytest
 
-from src.general.exceptions import RepositoryError
-from src.providers.cache.repositories import PublicJWKRepository
+from src.adapters.cache.repositories import RedisPublicJwkRepository
+from src.domain.errors import RepositoryError
 from tests.doubles import InMemoryRedis
 
 KEY_ID = "nzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs"
@@ -36,7 +36,7 @@ def _jwk(key_id: str) -> JWKDict:
 
 
 async def test_store_writes_jwk_json_under_key_with_kid(
-    jwk_repository: PublicJWKRepository,
+    jwk_repository: RedisPublicJwkRepository,
     redis_double: InMemoryRedis,
 ) -> None:
     """Сохранение публичного ключа.
@@ -56,7 +56,7 @@ async def test_store_writes_jwk_json_under_key_with_kid(
     assert json.loads(redis_double.values[f"jwk:{KEY_ID}"]) == jwk
 
 
-async def test_acquire_returns_stored_jwk(jwk_repository: PublicJWKRepository) -> None:
+async def test_acquire_returns_stored_jwk(jwk_repository: RedisPublicJwkRepository) -> None:
     """Чтение публичного ключа.
 
     Given: публичный JWK сохранён,
@@ -74,7 +74,9 @@ async def test_acquire_returns_stored_jwk(jwk_repository: PublicJWKRepository) -
     assert stored == jwk
 
 
-async def test_acquire_returns_none_for_unknown_key(jwk_repository: PublicJWKRepository) -> None:
+async def test_acquire_returns_none_for_unknown_key(
+    jwk_repository: RedisPublicJwkRepository,
+) -> None:
     """Чтение неопубликованного ключа.
 
     Given: ключ с таким `kid` не публиковался,
@@ -88,7 +90,9 @@ async def test_acquire_returns_none_for_unknown_key(jwk_repository: PublicJWKRep
     assert stored is None
 
 
-async def test_acquire_all_returns_every_published_jwk(jwk_repository: PublicJWKRepository) -> None:
+async def test_acquire_all_returns_every_published_jwk(
+    jwk_repository: RedisPublicJwkRepository,
+) -> None:
     """Чтение всего набора публичных ключей.
 
     Given: опубликованы два публичных JWK,
@@ -107,7 +111,7 @@ async def test_acquire_all_returns_every_published_jwk(jwk_repository: PublicJWK
 
 
 async def test_expire_rotated_sets_ttl_for_previous_keys_only(
-    jwk_repository: PublicJWKRepository,
+    jwk_repository: RedisPublicJwkRepository,
     redis_double: InMemoryRedis,
 ) -> None:
     """Время жизни ключей прошлых ротаций.
@@ -128,7 +132,7 @@ async def test_expire_rotated_sets_ttl_for_previous_keys_only(
 
 
 async def test_expire_rotated_keeps_ttl_of_already_rotated_keys(
-    jwk_repository: PublicJWKRepository,
+    jwk_repository: RedisPublicJwkRepository,
     redis_double: InMemoryRedis,
 ) -> None:
     """Повторная ротация не продлевает срок ключей прошлых ротаций.
@@ -154,7 +158,7 @@ async def test_expire_rotated_keeps_ttl_of_already_rotated_keys(
 
 
 def test_compile_template_fills_missing_kid_with_glob(
-    jwk_repository: PublicJWKRepository,
+    jwk_repository: RedisPublicJwkRepository,
 ) -> None:
     """Сборка ключа Redis из шаблона.
 
@@ -168,7 +172,7 @@ def test_compile_template_fills_missing_kid_with_glob(
 
 
 async def test_store_translates_transport_failure_into_repository_error(
-    unavailable_repository: PublicJWKRepository,
+    unavailable_repository: RedisPublicJwkRepository,
 ) -> None:
     """Отказ транспорта Redis при записи.
 

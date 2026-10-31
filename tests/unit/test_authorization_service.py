@@ -2,17 +2,16 @@
 
 import pytest
 
-from src.general.enums import TokenType
-from src.providers.cache.repositories import RevokedTokensRepository
-from src.services import (
-    AuthorizationService,
-    JWTDecryptionService,
-    JWTEncryptionService,
-    TokenRevocationService,
-    TokenRevokedError,
-    UserAuthorizationError,
+from src.adapters.cache.repositories import RedisRevokedTokensRepository
+from src.application import (
+    Authorize,
+    EnsureTokenActive,
+    IssueAccessToken,
+    VerifyAccessToken,
 )
-from src.services.jwk import JWKGenerationService
+from src.application.jwk import RotateJwk
+from src.domain.enums import TokenType
+from src.domain.errors import TokenRevokedError, UserAuthorizationError
 
 SUBJECT = 42
 TOKEN_ID = "authorization-token-under-test"  # noqa: S105
@@ -20,50 +19,48 @@ TTL_SECONDS = 3600
 
 
 @pytest.fixture
-def authorization_service(
-    decryption_service: JWTDecryptionService,
-    blacklisted_tokens_repository: RevokedTokensRepository,
-) -> AuthorizationService:
-    """Отдаёт сервис авторизации поверх подмены Redis.
+def authorize(
+    verify_access_token: VerifyAccessToken,
+    blacklisted_tokens_repository: RedisRevokedTokensRepository,
+) -> Authorize:
+    """Отдаёт use case авторизации поверх подмены Redis.
 
     Args:
-        decryption_service (JWTDecryptionService): Сервис проверки токенов.
-        blacklisted_tokens_repository (RevokedTokensRepository): Репозиторий
+        verify_access_token (VerifyAccessToken): Use case проверки токенов.
+        blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий
             отозванных токенов поверх подмены Redis.
 
     Returns:
-        AuthorizationService: Сервис авторизации запроса.
+        Authorize: Use case авторизации запроса.
     """
-    return AuthorizationService(
-        decryption_service=decryption_service,
-        revocation_service=TokenRevocationService(blacklisted_tokens_repository),
-    )
+    ensure_active = EnsureTokenActive(blacklisted_tokens_repository)
+    return Authorize(verify_access_token, ensure_active)
 
 
 async def _issue_token(
-    jwk_service: JWKGenerationService,
-    encryption_service: JWTEncryptionService,
+    rotate_jwk: RotateJwk,
+    issue_access_token: IssueAccessToken,
     *,
     ttl: int = TTL_SECONDS,
 ) -> str:
     """Публикует ключ и выпускает access-токен для проверки авторизации.
 
     Args:
-        jwk_service (JWKGenerationService): Сервис генерации и публикации ключей.
-        encryption_service (JWTEncryptionService): Сервис выпуска токенов.
+        rotate_jwk (RotateJwk): Use case генерации и публикации ключей.
+        issue_access_token (IssueAccessToken): Use case выпуска токенов.
         ttl (int, optional): Срок жизни токена в секундах. Defaults to TTL_SECONDS.
 
     Returns:
         str: Подписанный access-токен.
     """
-    await jwk_service.generate_jwk(TTL_SECONDS)
-    token, _ = await encryption_service.encrypt(SUBJECT, token_id=TOKEN_ID, ttl=ttl)
+    await rotate_jwk(TTL_SECONDS)
+    token, _ = await issue_access_token(SUBJECT, token_id=TOKEN_ID, ttl=ttl)
 
     return token
 
 
 async def test_authorize_requires_token(
-    authorization_service: AuthorizationService,
+    authorize: Authorize,
 ) -> None:
     """Авторизация без Bearer-токена.
 
@@ -73,13 +70,13 @@ async def test_authorize_requires_token(
     """
     # Когда / Тогда
     with pytest.raises(UserAuthorizationError, match="Bearer token is missing"):
-        await authorization_service.authorize(None)
+        await authorize(None)
 
 
 async def test_authorize_returns_claims_of_valid_token(
-    authorization_service: AuthorizationService,
-    jwk_service: JWKGenerationService,
-    encryption_service: JWTEncryptionService,
+    authorize: Authorize,
+    rotate_jwk: RotateJwk,
+    issue_access_token: IssueAccessToken,
 ) -> None:
     """Авторизация действующего токена.
 
@@ -88,10 +85,10 @@ async def test_authorize_returns_claims_of_valid_token(
     Then: он возвращает проверенные claims токена.
     """
     # Дано
-    token = await _issue_token(jwk_service, encryption_service)
+    token = await _issue_token(rotate_jwk, issue_access_token)
 
     # Когда
-    claims = await authorization_service.authorize(token)
+    claims = await authorize(token)
 
     # Тогда
     assert claims["sub"] == str(SUBJECT)
@@ -99,10 +96,10 @@ async def test_authorize_returns_claims_of_valid_token(
 
 
 async def test_authorize_rejects_revoked_token(
-    authorization_service: AuthorizationService,
-    jwk_service: JWKGenerationService,
-    encryption_service: JWTEncryptionService,
-    blacklisted_tokens_repository: RevokedTokensRepository,
+    authorize: Authorize,
+    rotate_jwk: RotateJwk,
+    issue_access_token: IssueAccessToken,
+    blacklisted_tokens_repository: RedisRevokedTokensRepository,
 ) -> None:
     """Авторизация отозванного токена.
 
@@ -111,7 +108,7 @@ async def test_authorize_rejects_revoked_token(
     Then: он сообщает, что токен отозван.
     """
     # Дано
-    token = await _issue_token(jwk_service, encryption_service)
+    token = await _issue_token(rotate_jwk, issue_access_token)
     await blacklisted_tokens_repository.store(
         token_type=TokenType.ACCESS,
         token_id=TOKEN_ID,
@@ -120,4 +117,4 @@ async def test_authorize_rejects_revoked_token(
 
     # Когда / Тогда
     with pytest.raises(TokenRevokedError, match="Token is revoked"):
-        await authorization_service.authorize(token)
+        await authorize(token)

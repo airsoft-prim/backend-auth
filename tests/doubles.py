@@ -12,8 +12,8 @@ from typing import Any, Self, cast
 
 from redis.asyncio import Redis
 
-from src.providers.database.models import User
-from src.providers.database.repositories import UserRepository
+from src.domain.entities import User
+from src.domain.ports import UserRepository
 
 __all__ = ["InMemoryRedis", "InMemoryUserRepository", "as_redis", "as_user_repository"]
 

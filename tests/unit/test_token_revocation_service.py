@@ -4,9 +4,10 @@ from datetime import UTC, datetime
 
 import pytest
 
-from src.general.security import AccessTokenClaims
-from src.providers.cache.repositories import RevokedTokensRepository
-from src.services import TokenRevocationService, TokenRevokedError
+from src.adapters.cache.repositories import RedisRevokedTokensRepository
+from src.application import EnsureTokenActive, RevokeToken
+from src.domain.entities import AccessTokenClaims
+from src.domain.errors import TokenRevokedError
 from tests.doubles import InMemoryRedis
 
 TOKEN_ID = "token-under-test"  # noqa: S105
@@ -45,7 +46,7 @@ def _expires_in(seconds: int) -> int:
 
 
 async def test_revoke_stores_token_until_it_expires(
-    blacklisted_tokens_repository: RevokedTokensRepository,
+    blacklisted_tokens_repository: RedisRevokedTokensRepository,
     redis_double: InMemoryRedis,
 ) -> None:
     """Отзыв действующего токена.
@@ -55,11 +56,11 @@ async def test_revoke_stores_token_until_it_expires(
     Then: в Redis появляется запись по `jti` с TTL, не превышающим срок жизни токена.
     """
     # Дано
-    service = TokenRevocationService(blacklisted_tokens_repository)
+    revoke_token = RevokeToken(blacklisted_tokens_repository)
     claims = _claims(expires_at=_expires_in(TTL_SECONDS))
 
     # Когда
-    await service.revoke(claims)
+    await revoke_token(claims)
 
     # Тогда
     key = f"token:access:revoked:{TOKEN_ID}"
@@ -68,7 +69,7 @@ async def test_revoke_stores_token_until_it_expires(
 
 
 async def test_revoke_does_not_store_expired_token(
-    blacklisted_tokens_repository: RevokedTokensRepository,
+    blacklisted_tokens_repository: RedisRevokedTokensRepository,
     redis_double: InMemoryRedis,
 ) -> None:
     """Отзыв уже истёкшего токена.
@@ -78,18 +79,18 @@ async def test_revoke_does_not_store_expired_token(
     Then: запись не создаётся: проверять отзыв истёкшего токена бессмысленно.
     """
     # Дано
-    service = TokenRevocationService(blacklisted_tokens_repository)
+    revoke_token = RevokeToken(blacklisted_tokens_repository)
     claims = _claims(expires_at=_expires_in(-TTL_SECONDS))
 
     # Когда
-    await service.revoke(claims)
+    await revoke_token(claims)
 
     # Тогда
     assert redis_double.values == {}
 
 
 async def test_ensure_active_accepts_token_that_is_not_revoked(
-    blacklisted_tokens_repository: RevokedTokensRepository,
+    blacklisted_tokens_repository: RedisRevokedTokensRepository,
 ) -> None:
     """Проверка действующего токена.
 
@@ -98,15 +99,15 @@ async def test_ensure_active_accepts_token_that_is_not_revoked(
     Then: проверка проходит без ошибки.
     """
     # Дано
-    service = TokenRevocationService(blacklisted_tokens_repository)
+    ensure_token_active = EnsureTokenActive(blacklisted_tokens_repository)
     claims = _claims(expires_at=_expires_in(TTL_SECONDS))
 
     # Когда / Тогда
-    await service.ensure_active(claims)
+    await ensure_token_active(claims)
 
 
 async def test_ensure_active_rejects_revoked_token(
-    blacklisted_tokens_repository: RevokedTokensRepository,
+    blacklisted_tokens_repository: RedisRevokedTokensRepository,
 ) -> None:
     """Проверка отозванного токена.
 
@@ -115,10 +116,11 @@ async def test_ensure_active_rejects_revoked_token(
     Then: сервис сообщает, что токен отозван.
     """
     # Дано
-    service = TokenRevocationService(blacklisted_tokens_repository)
+    revoke_token = RevokeToken(blacklisted_tokens_repository)
+    ensure_token_active = EnsureTokenActive(blacklisted_tokens_repository)
     claims = _claims(expires_at=_expires_in(TTL_SECONDS))
-    await service.revoke(claims)
+    await revoke_token(claims)
 
     # Когда / Тогда
     with pytest.raises(TokenRevokedError, match="Token is revoked"):
-        await service.ensure_active(claims)
+        await ensure_token_active(claims)

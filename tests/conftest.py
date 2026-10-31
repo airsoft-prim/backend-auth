@@ -11,14 +11,18 @@ from fastapi import FastAPI
 from pwdlib import PasswordHash
 import pytest
 
-from src.api.well_known.deps import get_jwk_publishing_service
+from src.adapters.cache.repositories import (
+    RedisPublicJwkRepository,
+    RedisRevokedTokensRepository,
+)
+from src.adapters.crypto.hasher import PASSWORD_HASHER
+from src.adapters.filesystem import FileSystem
+from src.adapters.filesystem.repositories import FilePrivateJwkRepository
 from src.app import application
-from src.general.security import PASSWORD_HASHER
-from src.providers.cache.repositories import PublicJWKRepository, RevokedTokensRepository
-from src.providers.filesystem import FileSystem
-from src.providers.filesystem.repositories import PrivateJWKRepository
-from src.services.jwk import JWKGenerationService, JWKPublishingService
-from src.services.jwt import JWTDecryptionService, JWTEncryptionService
+from src.application.jwk import CollectJwks, RotateJwk
+from src.application.token import IssueAccessToken, VerifyAccessToken
+from src.config import config
+from src.interface.well_known.deps import get_collect_jwks
 from tests.asgi_client import ASGIClient
 from tests.doubles import InMemoryRedis, as_redis
 
@@ -26,18 +30,18 @@ __all__ = [
     "api_app",
     "api_client",
     "blacklisted_tokens_repository",
-    "decryption_service",
-    "encryption_service",
+    "collect_jwks",
     "file_system",
+    "issue_access_token",
     "jwk_repository",
-    "jwk_service",
     "jwks_client",
     "key_store_dir",
     "password_hash",
     "private_jwk_repository",
-    "publishing_service",
     "redis_double",
+    "rotate_jwk",
     "unavailable_repository",
+    "verify_access_token",
 ]
 
 
@@ -69,8 +73,8 @@ def api_client(api_app: FastAPI) -> ASGIClient:
 def password_hash() -> PasswordHash:
     """Отдаёт хешер паролей, тот же, что собирается для приложения.
 
-    Хешер берётся из общих средств безопасности (`src/general/security.py`), чтобы тест
-    проверял именно ту конфигурацию Argon2id, с которой работает сервис.
+    Хешер берётся из общих средств безопасности, чтобы тест проверял именно ту
+    конфигурацию Argon2id, с которой работает сервис.
 
     Returns:
         PasswordHash: Хешер паролей.
@@ -89,39 +93,39 @@ def redis_double() -> InMemoryRedis:
 
 
 @pytest.fixture
-def jwk_repository(redis_double: InMemoryRedis) -> PublicJWKRepository:
+def jwk_repository(redis_double: InMemoryRedis) -> RedisPublicJwkRepository:
     """Отдаёт репозиторий публичных JWK поверх подмены Redis.
 
     Args:
         redis_double (InMemoryRedis): Подмена Redis.
 
     Returns:
-        PublicJWKRepository: Репозиторий публичных ключей.
+        RedisPublicJwkRepository: Репозиторий публичных ключей.
     """
-    return PublicJWKRepository(as_redis(redis_double))
+    return RedisPublicJwkRepository(as_redis(redis_double))
 
 
 @pytest.fixture
-def blacklisted_tokens_repository(redis_double: InMemoryRedis) -> RevokedTokensRepository:
+def blacklisted_tokens_repository(redis_double: InMemoryRedis) -> RedisRevokedTokensRepository:
     """Отдаёт репозиторий отозванных токенов поверх подмены Redis.
 
     Args:
         redis_double (InMemoryRedis): Подмена Redis.
 
     Returns:
-        RevokedTokensRepository: Репозиторий отозванных токенов.
+        RedisRevokedTokensRepository: Репозиторий отозванных токенов.
     """
-    return RevokedTokensRepository(as_redis(redis_double))
+    return RedisRevokedTokensRepository(as_redis(redis_double))
 
 
 @pytest.fixture
-def unavailable_repository() -> PublicJWKRepository:
+def unavailable_repository() -> RedisPublicJwkRepository:
     """Отдаёт репозиторий публичных JWK с недоступным Redis.
 
     Returns:
-        PublicJWKRepository: Репозиторий, чьи обращения к кешу падают.
+        RedisPublicJwkRepository: Репозиторий, чьи обращения к кешу падают.
     """
-    return PublicJWKRepository(as_redis(InMemoryRedis(unavailable=True)))
+    return RedisPublicJwkRepository(as_redis(InMemoryRedis(unavailable=True)))
 
 
 @pytest.fixture
@@ -151,89 +155,96 @@ def file_system(key_store_dir: Path) -> FileSystem:
 
 
 @pytest.fixture
-def private_jwk_repository(file_system: FileSystem) -> PrivateJWKRepository:
+def private_jwk_repository(file_system: FileSystem) -> FilePrivateJwkRepository:
     """Отдаёт репозиторий приватного ключа поверх файловой системы.
 
     Args:
         file_system (FileSystem): Объект доступа к файловой системе.
 
     Returns:
-        PrivateJWKRepository: Репозиторий приватного ключа подписи.
+        FilePrivateJwkRepository: Репозиторий приватного ключа подписи.
     """
-    return PrivateJWKRepository(file_system)
+    return FilePrivateJwkRepository(file_system)
 
 
 @pytest.fixture
-def jwk_service(
-    private_jwk_repository: PrivateJWKRepository,
-    jwk_repository: PublicJWKRepository,
-) -> JWKGenerationService:
-    """Отдаёт сервис генерации JWK поверх подмены Redis.
+def rotate_jwk(
+    private_jwk_repository: FilePrivateJwkRepository,
+    jwk_repository: RedisPublicJwkRepository,
+) -> RotateJwk:
+    """Отдаёт use case ротации JWK поверх подмены Redis.
 
     Args:
-        private_jwk_repository (PrivateJWKRepository): Репозиторий приватного ключа.
-        jwk_repository (PublicJWKRepository): Репозиторий публичных ключей.
+        private_jwk_repository (FilePrivateJwkRepository): Репозиторий приватного ключа.
+        jwk_repository (RedisPublicJwkRepository): Репозиторий публичных ключей.
 
     Returns:
-        JWKGenerationService: Сервис генерации ключей.
+        RotateJwk: Use case генерации и ротации ключей.
     """
-    return JWKGenerationService(private_jwk_repository, jwk_repository)
+    return RotateJwk(private_jwk_repository, jwk_repository)
 
 
 @pytest.fixture
-def publishing_service(jwk_repository: PublicJWKRepository) -> JWKPublishingService:
-    """Отдаёт сервис публикации JWK поверх подмены Redis.
+def collect_jwks(jwk_repository: RedisPublicJwkRepository) -> CollectJwks:
+    """Отдаёт use case сбора JWK поверх подмены Redis.
 
     Args:
-        jwk_repository (PublicJWKRepository): Репозиторий публичных ключей.
+        jwk_repository (RedisPublicJwkRepository): Репозиторий публичных ключей.
 
     Returns:
-        JWKPublishingService: Сервис публикации ключей.
+        CollectJwks: Use case сбора публичных ключей.
     """
-    return JWKPublishingService(jwk_repository=jwk_repository)
+    return CollectJwks(jwks=jwk_repository)
 
 
 @pytest.fixture
-def encryption_service(
-    private_jwk_repository: PrivateJWKRepository,
-) -> JWTEncryptionService:
-    """Отдаёт сервис выпуска токенов поверх keyfile.
+def issue_access_token(
+    private_jwk_repository: FilePrivateJwkRepository,
+) -> IssueAccessToken:
+    """Отдаёт use case выпуска токенов поверх keyfile.
 
     Args:
-        private_jwk_repository (PrivateJWKRepository): Репозиторий приватного ключа.
+        private_jwk_repository (FilePrivateJwkRepository): Репозиторий приватного ключа.
 
     Returns:
-        JWTEncryptionService: Сервис подписи access-токенов.
+        IssueAccessToken: Use case подписи access-токенов.
     """
-    return JWTEncryptionService(private_key_repository=private_jwk_repository)
+    return IssueAccessToken(
+        private_key_repository=private_jwk_repository,
+        issuer=config.app.NAME,
+        audience=config.app.PROJECT,
+        ttl=config.security.ACCESS_TOKEN_TTL,
+    )
 
 
 @pytest.fixture
-def decryption_service(jwk_repository: PublicJWKRepository) -> JWTDecryptionService:
-    """Отдаёт сервис проверки токенов поверх подмены Redis.
+def verify_access_token(jwk_repository: RedisPublicJwkRepository) -> VerifyAccessToken:
+    """Отдаёт use case проверки токенов поверх подмены Redis.
 
     Args:
-        jwk_repository (PublicJWKRepository): Репозиторий публичных ключей.
+        jwk_repository (RedisPublicJwkRepository): Репозиторий публичных ключей.
 
     Returns:
-        JWTDecryptionService: Сервис проверки access-токенов.
+        VerifyAccessToken: Use case проверки access-токенов.
     """
-    return JWTDecryptionService(public_key_repository=jwk_repository)
+    return VerifyAccessToken(
+        public_key_repository=jwk_repository,
+        issuer=config.app.NAME,
+        audience=config.app.PROJECT,
+    )
 
 
 @pytest.fixture
-def jwks_client(api_app: FastAPI, jwk_repository: PublicJWKRepository) -> ASGIClient:
+def jwks_client(api_app: FastAPI, jwk_repository: RedisPublicJwkRepository) -> ASGIClient:
     """Отдаёт клиент эндпоинта JWKS с ключами из подмены Redis.
 
     Args:
         api_app (FastAPI): Приложение под тестом.
-        jwk_repository (PublicJWKRepository): Репозиторий публичных ключей.
+        jwk_repository (RedisPublicJwkRepository): Репозиторий публичных ключей.
 
     Returns:
         ASGIClient: Клиент, чей сервис публикации читает подмену Redis.
     """
-    api_app.dependency_overrides[get_jwk_publishing_service] = lambda: JWKPublishingService(
-        jwk_repository=jwk_repository
-    )
+    api_app.dependency_overrides[get_collect_jwks] = lambda: CollectJwks(jwks=jwk_repository)
 
     return ASGIClient(api_app)

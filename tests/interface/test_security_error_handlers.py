@@ -3,10 +3,13 @@
 from fastapi import FastAPI, status
 import pytest
 
-from src.exc_handlers import register_exception_handlers
-from src.general.exceptions import SecurityError
-from src.services.jwt import JWTDecryptionError, JWTEncryptionError
-from src.services.user import UserAuthenticationError
+from src.domain.errors import (
+    JWTDecryptionError,
+    JWTEncryptionError,
+    SecurityError,
+    UserAuthenticationError,
+)
+from src.interface.exc_handlers import register_exception_handlers
 from tests.asgi_client import ASGIClient
 
 DECRYPTION_PATH = "/test/jwt-decrypt"

@@ -5,10 +5,10 @@ from collections.abc import Callable
 from fastapi import FastAPI
 import pytest
 
-from src.api.auth.deps import get_user_service
-from src.api.well_known.deps import get_jwk_publishing_service
-from src.providers.cache.repositories import PublicJWKRepository
-from src.services.jwk import JWKPublishingService
+from src.adapters.cache.repositories import RedisPublicJwkRepository
+from src.application.jwk import CollectJwks
+from src.interface.auth.deps import get_register_user
+from src.interface.well_known.deps import get_collect_jwks
 from tests.asgi_client import ASGIClient
 
 __all__ = [
@@ -37,7 +37,7 @@ class StubUserService:
         self._error = error
         self.received: dict[str, str] | None = None
 
-    async def register(self, *, username: str, email: str, password: str) -> None:
+    async def __call__(self, *, username: str, email: str, password: str) -> None:
         """Запоминает данные регистрации или поднимает заданную ошибку.
 
         Args:
@@ -54,7 +54,7 @@ class StubUserService:
             raise self._error
 
 
-type JWKSClientFactory = Callable[[PublicJWKRepository], ASGIClient]
+type JWKSClientFactory = Callable[[RedisPublicJwkRepository], ASGIClient]
 type RegisterClientFactory = Callable[[StubUserService], ASGIClient]
 
 
@@ -72,10 +72,8 @@ def jwks_client_factory(api_app: FastAPI) -> JWKSClientFactory:
         JWKSClientFactory: Фабрика клиентов эндпоинта.
     """
 
-    def _factory(repository: PublicJWKRepository) -> ASGIClient:
-        api_app.dependency_overrides[get_jwk_publishing_service] = lambda: JWKPublishingService(
-            jwk_repository=repository
-        )
+    def _factory(repository: RedisPublicJwkRepository) -> ASGIClient:
+        api_app.dependency_overrides[get_collect_jwks] = lambda: CollectJwks(jwks=repository)
 
         return ASGIClient(api_app)
 
@@ -97,7 +95,7 @@ def register_client_factory(api_app: FastAPI) -> RegisterClientFactory:
     """
 
     def _factory(service: StubUserService) -> ASGIClient:
-        api_app.dependency_overrides[get_user_service] = lambda: service
+        api_app.dependency_overrides[get_register_user] = lambda: service
 
         return ASGIClient(api_app)
 

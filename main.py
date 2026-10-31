@@ -3,7 +3,7 @@ from typing import Final
 import uvicorn
 
 from src import application
-from src.core.configs import config
+from src.config import config
 
 # Привязка к localhost делает проброс портов наружу невозможным.
 HOST: Final[str] = "0.0.0.0"  # noqa: S104 # nosec: B104

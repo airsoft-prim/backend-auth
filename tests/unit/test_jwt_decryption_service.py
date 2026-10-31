@@ -8,9 +8,10 @@ import jwt
 from jwt import PyJWK
 import pytest
 
-from src.core.configs import config
-from src.services.jwk import JWKGenerationService
-from src.services.jwt import JWTDecryptionError, JWTDecryptionService, JWTEncryptionService
+from src.application.jwk import RotateJwk
+from src.application.token import IssueAccessToken, VerifyAccessToken
+from src.config import config
+from src.domain.errors import JWTDecryptionError
 from tests.doubles import InMemoryRedis
 from tests.unit.conftest import RawTokenSigner
 
@@ -59,9 +60,9 @@ def _key_id(public_key: PyJWK) -> str:
 
 
 async def test_decrypt_returns_claims_of_valid_token(
-    encryption_service: JWTEncryptionService,
-    decryption_service: JWTDecryptionService,
-    jwk_service: JWKGenerationService,
+    issue_access_token: IssueAccessToken,
+    verify_access_token: VerifyAccessToken,
+    rotate_jwk: RotateJwk,
 ) -> None:
     """Проверка корректного токена.
 
@@ -70,11 +71,11 @@ async def test_decrypt_returns_claims_of_valid_token(
     Then: подпись сходится, и он получает издателя, аудиторию, субъекта, роль и `jti`.
     """
     # Дано
-    published = await jwk_service.generate_jwk(TTL_SECONDS)
-    token, _ = await encryption_service.encrypt(SUBJECT, SUBJECT_ROLE, token_id=TOKEN_ID)
+    published = await rotate_jwk(TTL_SECONDS)
+    token, _ = await issue_access_token(SUBJECT, SUBJECT_ROLE, token_id=TOKEN_ID)
 
     # Когда
-    claims = await decryption_service.decrypt(token)
+    claims = await verify_access_token(token)
 
     # Тогда
     assert jwt.get_unverified_header(token)["kid"] == _key_id(published)
@@ -87,8 +88,8 @@ async def test_decrypt_returns_claims_of_valid_token(
 
 
 async def test_decrypt_accepts_token_without_optional_role(
-    decryption_service: JWTDecryptionService,
-    jwk_service: JWKGenerationService,
+    verify_access_token: VerifyAccessToken,
+    rotate_jwk: RotateJwk,
     raw_token_signer: RawTokenSigner,
 ) -> None:
     """Проверка токена без необязательного claim роли.
@@ -98,11 +99,11 @@ async def test_decrypt_accepts_token_without_optional_role(
     Then: сервис принимает токен: роль — необязательный claim.
     """
     # Дано
-    published = await jwk_service.generate_jwk(TTL_SECONDS)
+    published = await rotate_jwk(TTL_SECONDS)
     token = raw_token_signer(_claims(), _key_id(published))
 
     # Когда
-    claims = await decryption_service.decrypt(token)
+    claims = await verify_access_token(token)
 
     # Тогда
     assert "srl" not in claims
@@ -110,9 +111,9 @@ async def test_decrypt_accepts_token_without_optional_role(
 
 
 async def test_decrypt_rejects_token_whose_key_is_not_published(
-    encryption_service: JWTEncryptionService,
-    decryption_service: JWTDecryptionService,
-    jwk_service: JWKGenerationService,
+    issue_access_token: IssueAccessToken,
+    verify_access_token: VerifyAccessToken,
+    rotate_jwk: RotateJwk,
     redis_double: InMemoryRedis,
 ) -> None:
     """Проверка токена без опубликованного ключа.
@@ -122,19 +123,19 @@ async def test_decrypt_rejects_token_whose_key_is_not_published(
     Then: сервис отказывает, потому что проверять подпись нечем.
     """
     # Дано
-    await jwk_service.generate_jwk(TTL_SECONDS)
-    token, _ = await encryption_service.encrypt(SUBJECT)
+    await rotate_jwk(TTL_SECONDS)
+    token, _ = await issue_access_token(SUBJECT)
     redis_double.values.clear()
 
     # Когда / Тогда
     with pytest.raises(JWTDecryptionError, match="signing key is not published"):
-        await decryption_service.decrypt(token)
+        await verify_access_token(token)
 
 
 async def test_decrypt_rejects_token_with_broken_signature(
-    encryption_service: JWTEncryptionService,
-    decryption_service: JWTDecryptionService,
-    jwk_service: JWKGenerationService,
+    issue_access_token: IssueAccessToken,
+    verify_access_token: VerifyAccessToken,
+    rotate_jwk: RotateJwk,
 ) -> None:
     """Проверка токена с изменённой подписью.
 
@@ -143,21 +144,21 @@ async def test_decrypt_rejects_token_with_broken_signature(
     Then: сервис отказывает: подпись не сходится с содержимым токена.
     """
     # Дано
-    await jwk_service.generate_jwk(TTL_SECONDS)
-    token, _ = await encryption_service.encrypt(SUBJECT)
+    await rotate_jwk(TTL_SECONDS)
+    token, _ = await issue_access_token(SUBJECT)
     header, payload, signature = token.split(".")
     replacement = "A" if signature[0] != "A" else "B"
     broken = ".".join((header, payload, replacement + signature[1:]))
 
     # Когда / Тогда
     with pytest.raises(JWTDecryptionError, match="Token is invalid"):
-        await decryption_service.decrypt(broken)
+        await verify_access_token(broken)
 
 
 async def test_decrypt_rejects_expired_token(
-    encryption_service: JWTEncryptionService,
-    decryption_service: JWTDecryptionService,
-    jwk_service: JWKGenerationService,
+    issue_access_token: IssueAccessToken,
+    verify_access_token: VerifyAccessToken,
+    rotate_jwk: RotateJwk,
 ) -> None:
     """Проверка просроченного токена.
 
@@ -166,17 +167,17 @@ async def test_decrypt_rejects_expired_token(
     Then: сервис отказывает, даже если подпись верна.
     """
     # Дано
-    await jwk_service.generate_jwk(TTL_SECONDS)
-    token, _ = await encryption_service.encrypt(SUBJECT, ttl=-1)
+    await rotate_jwk(TTL_SECONDS)
+    token, _ = await issue_access_token(SUBJECT, ttl=-1)
 
     # Когда / Тогда
     with pytest.raises(JWTDecryptionError, match="Token is invalid"):
-        await decryption_service.decrypt(token)
+        await verify_access_token(token)
 
 
 async def test_decrypt_rejects_token_without_key_id(
-    decryption_service: JWTDecryptionService,
-    jwk_service: JWKGenerationService,
+    verify_access_token: VerifyAccessToken,
+    rotate_jwk: RotateJwk,
     raw_token_signer: RawTokenSigner,
 ) -> None:
     """Проверка токена без `kid` в заголовке.
@@ -186,15 +187,15 @@ async def test_decrypt_rejects_token_without_key_id(
     Then: сервис отказывает: ключ для проверки не выбрать.
     """
     # Дано
-    await jwk_service.generate_jwk(TTL_SECONDS)
+    await rotate_jwk(TTL_SECONDS)
     token = raw_token_signer(_claims(), None)
 
     # Когда / Тогда
     with pytest.raises(JWTDecryptionError, match="does not contain a key ID"):
-        await decryption_service.decrypt(token)
+        await verify_access_token(token)
 
 
-async def test_decrypt_rejects_malformed_token(decryption_service: JWTDecryptionService) -> None:
+async def test_decrypt_rejects_malformed_token(verify_access_token: VerifyAccessToken) -> None:
     """Проверка строки, не являющейся JWT.
 
     Given: вместо токена передана произвольная строка,
@@ -203,12 +204,12 @@ async def test_decrypt_rejects_malformed_token(decryption_service: JWTDecryption
     """
     # Когда / Тогда
     with pytest.raises(JWTDecryptionError, match="Token header is invalid"):
-        await decryption_service.decrypt("not-a-jwt")
+        await verify_access_token("not-a-jwt")
 
 
 async def test_decrypt_rejects_token_without_required_claim(
-    decryption_service: JWTDecryptionService,
-    jwk_service: JWKGenerationService,
+    verify_access_token: VerifyAccessToken,
+    rotate_jwk: RotateJwk,
     raw_token_signer: RawTokenSigner,
 ) -> None:
     """Проверка токена без обязательного `jti`.
@@ -218,19 +219,19 @@ async def test_decrypt_rejects_token_without_required_claim(
     Then: сервис отказывает: без `jti` токен нельзя отозвать при выходе.
     """
     # Дано
-    published = await jwk_service.generate_jwk(TTL_SECONDS)
+    published = await rotate_jwk(TTL_SECONDS)
     claims = _claims()
     claims.pop("jti")
     token = raw_token_signer(claims, _key_id(published))
 
     # Когда / Тогда
     with pytest.raises(JWTDecryptionError, match="Token is invalid"):
-        await decryption_service.decrypt(token)
+        await verify_access_token(token)
 
 
 async def test_decrypt_rejects_token_with_foreign_issuer(
-    decryption_service: JWTDecryptionService,
-    jwk_service: JWKGenerationService,
+    verify_access_token: VerifyAccessToken,
+    rotate_jwk: RotateJwk,
     raw_token_signer: RawTokenSigner,
 ) -> None:
     """Проверка токена с чужим издателем.
@@ -240,18 +241,18 @@ async def test_decrypt_rejects_token_with_foreign_issuer(
     Then: сервис отказывает: токен адресован не этому сервису.
     """
     # Дано
-    published = await jwk_service.generate_jwk(TTL_SECONDS)
+    published = await rotate_jwk(TTL_SECONDS)
     claims = _claims() | {"iss": "foreign-issuer"}
     token = raw_token_signer(claims, _key_id(published))
 
     # Когда / Тогда
     with pytest.raises(JWTDecryptionError, match="Token is invalid"):
-        await decryption_service.decrypt(token)
+        await verify_access_token(token)
 
 
 async def test_decrypt_rejects_token_with_foreign_audience(
-    decryption_service: JWTDecryptionService,
-    jwk_service: JWKGenerationService,
+    verify_access_token: VerifyAccessToken,
+    rotate_jwk: RotateJwk,
     raw_token_signer: RawTokenSigner,
 ) -> None:
     """Проверка токена с чужой аудиторией.
@@ -261,18 +262,18 @@ async def test_decrypt_rejects_token_with_foreign_audience(
     Then: сервис отказывает: токен адресован не ему.
     """
     # Дано
-    published = await jwk_service.generate_jwk(TTL_SECONDS)
+    published = await rotate_jwk(TTL_SECONDS)
     claims = _claims() | {"aud": "foreign-audience"}
     token = raw_token_signer(claims, _key_id(published))
 
     # Когда / Тогда
     with pytest.raises(JWTDecryptionError, match="Token is invalid"):
-        await decryption_service.decrypt(token)
+        await verify_access_token(token)
 
 
 async def test_decrypt_rejects_token_with_foreign_algorithm(
-    decryption_service: JWTDecryptionService,
-    jwk_service: JWKGenerationService,
+    verify_access_token: VerifyAccessToken,
+    rotate_jwk: RotateJwk,
 ) -> None:
     """Проверка токена, подписанного другим алгоритмом.
 
@@ -281,7 +282,7 @@ async def test_decrypt_rejects_token_with_foreign_algorithm(
     Then: сервис отказывает, не подставляя чужой алгоритм проверки.
     """
     # Дано
-    published = await jwk_service.generate_jwk(TTL_SECONDS)
+    published = await rotate_jwk(TTL_SECONDS)
     token = jwt.encode(
         _claims(),
         HS256_SECRET,
@@ -291,12 +292,12 @@ async def test_decrypt_rejects_token_with_foreign_algorithm(
 
     # Когда / Тогда
     with pytest.raises(JWTDecryptionError, match="Token is invalid"):
-        await decryption_service.decrypt(token)
+        await verify_access_token(token)
 
 
 async def test_decrypt_rejects_invalid_published_key(
-    decryption_service: JWTDecryptionService,
-    jwk_service: JWKGenerationService,
+    verify_access_token: VerifyAccessToken,
+    rotate_jwk: RotateJwk,
     raw_token_signer: RawTokenSigner,
     redis_double: InMemoryRedis,
 ) -> None:
@@ -307,11 +308,11 @@ async def test_decrypt_rejects_invalid_published_key(
     Then: сервис отказывает, не пропуская токен без проверки подписи.
     """
     # Дано
-    published = await jwk_service.generate_jwk(TTL_SECONDS)
+    published = await rotate_jwk(TTL_SECONDS)
     key_id = _key_id(published)
     redis_double.values[f"jwk:{key_id}"] = json.dumps({"kty": "OKP", "kid": key_id})
     token = raw_token_signer(_claims(), key_id)
 
     # Когда / Тогда
     with pytest.raises(JWTDecryptionError, match="Token is invalid"):
-        await decryption_service.decrypt(token)
+        await verify_access_token(token)
