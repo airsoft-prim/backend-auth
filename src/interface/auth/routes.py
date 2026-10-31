@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, Response
+from fastapi import APIRouter, Body, Depends, Request, Response
 
 from src.application.auth import GetUser, LoginUser, RegisterUser
 from src.application.session import CreateSession
@@ -9,6 +9,7 @@ from src.application.token import (
     IssueTokenPair,
     RevokeSession,
     RotateRefreshToken,
+    SignToken,
 )
 from src.config import config
 from src.domain.entities import User
@@ -23,6 +24,7 @@ from .deps import (
     get_register_user,
     get_revoke_session,
     get_rotate_refresh_token,
+    get_sign_refresh_token,
     get_user,
 )
 from .docs import LOGIN_DOCS, LOGOUT_DOCS, ME_DOCS, REFRESH_DOCS, REGISTER_DOCS
@@ -49,41 +51,40 @@ async def register_user(
     )
 
 
-@router.post("/login", **LOGIN_DOCS)
-async def login_user(
+@router.post("/login", response_class=Response, **LOGIN_DOCS)
+async def login_user(  # noqa: PLR0913, PLR0917
     response: Response,
+    request: Request,
     body: Annotated[LoginRequestBody, Body(...)],
     login: Annotated[LoginUser, Depends(get_login_user)],
     create_session: Annotated[CreateSession, Depends(get_create_session)],
-    issue_tokens: Annotated[IssueTokenPair, Depends(get_issue_token_pair)],
-) -> AccessToken:
+    sign_refresh_token: Annotated[SignToken, Depends(get_sign_refresh_token)],
+) -> None:
     """Функция входа в систему.
 
     Args:
         response (Response): Ответ, в который кладётся refresh-токен (cookie).
+        request (Request): Запрос, из которого читается контекст входа (IP и User-Agent).
         body (LoginRequestBody): Учётные данные пользователя.
         login (LoginUser): Use case входа.
         create_session (CreateSession): Use case создания сессии.
-        issue_tokens (IssueTokenPair): Use case выпуска пары токенов.
-
-    Returns:
-        AccessToken: Выпущенный access-токен с параметрами.
+        sign_refresh_token (SignToken): Use case подписи refresh-токена.
     """
-    subject, role = await login(body.username, body.password.get_secret_value())
-    session = await create_session(subject)
+    subject, _ = await login(body.username, body.password.get_secret_value())
 
-    pair = await issue_tokens(subject, session.id, role)
+    ip = request.client.host if request.client is not None else None
+    session = await create_session(subject, ip=ip, user_agent=request.headers.get("user-agent"))
+
+    refresh_token, _ = await sign_refresh_token(subject, session.id)
 
     response.set_cookie(
         key=REFRESH_TOKEN_COOKIE,
-        value=pair.refresh_token,
+        value=refresh_token,
         max_age=config.security.REFRESH_TOKEN_TTL,
         httponly=True,
         secure=not config.app.DEBUG,
         samesite="lax",
     )
-
-    return AccessToken(access_token=pair.access_token, expires_in=pair.expires_in)
 
 
 @router.get("/me", **ME_DOCS)
@@ -121,6 +122,9 @@ async def refresh_access_token(
     """
     await rotate(claims)
 
+    # TODO: инвалидировать ранее выданные access-токены этой сессии. Ротация
+    # отзывает только старый refresh-токен, поэтому access-токены от предыдущих
+    # /refresh остаются действительными до конца своего срока жизни.
     user = await fetch_user(int(claims["sub"]))
     pair = await issue_tokens(claims["sub"], claims["sid"], user.system_role)
 

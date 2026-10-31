@@ -51,7 +51,6 @@ services:
       - redis-data:/data
     profiles: ["dev", "deploy"]
 
-
   app:
     build:
       <<: *build-configuration

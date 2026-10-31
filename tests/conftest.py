@@ -14,6 +14,7 @@ import pytest
 from src.adapters.cache.repositories import (
     RedisPublicJwkRepository,
     RedisRevokedTokensRepository,
+    RedisSessionRepository,
 )
 from src.adapters.crypto.hasher import PASSWORD_HASHER
 from src.adapters.filesystem import FileSystem
@@ -22,7 +23,12 @@ from src.app import application
 from src.application.jwk import CollectJwks, RotateJwk
 from src.application.token import SignToken, VerifyToken
 from src.config import config
-from src.domain.tokens import AccessTokenConfig
+from src.domain.tokens import (
+    AccessTokenClaims,
+    AccessTokenConfig,
+    RefreshTokenClaims,
+    RefreshTokenConfig,
+)
 from src.interface.well_known.deps import get_collect_jwks
 from tests.asgi_client import ASGIClient
 from tests.doubles import InMemoryRedis, as_redis
@@ -40,8 +46,11 @@ __all__ = [
     "private_jwk_repository",
     "redis_double",
     "rotate_jwk",
+    "session_repository",
+    "sign_refresh_token",
     "sign_token",
     "unavailable_repository",
+    "verify_refresh_token",
     "verify_token",
 ]
 
@@ -117,6 +126,19 @@ def blacklisted_tokens_repository(redis_double: InMemoryRedis) -> RedisRevokedTo
         RedisRevokedTokensRepository: Репозиторий отозванных токенов.
     """
     return RedisRevokedTokensRepository(as_redis(redis_double))
+
+
+@pytest.fixture
+def session_repository(redis_double: InMemoryRedis) -> RedisSessionRepository:
+    """Отдаёт репозиторий сессий поверх подмены Redis.
+
+    Args:
+        redis_double (InMemoryRedis): Подмена Redis.
+
+    Returns:
+        RedisSessionRepository: Репозиторий сессий пользователей.
+    """
+    return RedisSessionRepository(as_redis(redis_double))
 
 
 @pytest.fixture
@@ -220,19 +242,61 @@ def sign_token(
 
 
 @pytest.fixture
-def verify_token(jwk_repository: RedisPublicJwkRepository) -> VerifyToken:
+def verify_token(jwk_repository: RedisPublicJwkRepository) -> VerifyToken[AccessTokenClaims]:
     """Отдаёт use case проверки токенов поверх подмены Redis.
 
     Args:
         jwk_repository (RedisPublicJwkRepository): Репозиторий публичных ключей.
 
     Returns:
-        VerifyToken: Use case проверки access-токенов.
+        VerifyToken[AccessTokenClaims]: Use case проверки access-токенов.
     """
     token_config = AccessTokenConfig(
         issuer=config.app.NAME,
         audience=config.app.PROJECT,
         ttl=config.security.ACCESS_TOKEN_TTL,
+    )
+
+    return VerifyToken(token_config, jwk_repository)
+
+
+@pytest.fixture
+def sign_refresh_token(
+    private_jwk_repository: FilePrivateJwkRepository,
+) -> SignToken:
+    """Отдаёт use case выпуска refresh-токенов поверх keyfile.
+
+    Args:
+        private_jwk_repository (FilePrivateJwkRepository): Репозиторий приватного ключа.
+
+    Returns:
+        SignToken: Use case подписи refresh-токенов.
+    """
+    token_config = RefreshTokenConfig(
+        issuer=config.app.NAME,
+        audience=config.app.NAME,
+        ttl=config.security.REFRESH_TOKEN_TTL,
+    )
+
+    return SignToken(token_config, private_jwk_repository)
+
+
+@pytest.fixture
+def verify_refresh_token(
+    jwk_repository: RedisPublicJwkRepository,
+) -> VerifyToken[RefreshTokenClaims]:
+    """Отдаёт use case проверки refresh-токенов поверх подмены Redis.
+
+    Args:
+        jwk_repository (RedisPublicJwkRepository): Репозиторий публичных ключей.
+
+    Returns:
+        VerifyToken[RefreshTokenClaims]: Use case проверки refresh-токенов.
+    """
+    token_config = RefreshTokenConfig(
+        issuer=config.app.NAME,
+        audience=config.app.NAME,
+        ttl=config.security.REFRESH_TOKEN_TTL,
     )
 
     return VerifyToken(token_config, jwk_repository)

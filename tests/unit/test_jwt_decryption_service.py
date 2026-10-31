@@ -295,7 +295,7 @@ async def test_verify_rejects_token_with_foreign_algorithm(
         _claims(),
         HS256_SECRET,
         algorithm="HS256",
-        headers={"kid": _key_id(published)},
+        headers={"kid": _key_id(published), "typ": "access"},
     )
 
     # Когда / Тогда

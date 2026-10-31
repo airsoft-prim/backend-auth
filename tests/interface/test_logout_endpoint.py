@@ -1,26 +1,24 @@
 """Тесты HTTP-контракта выхода из системы."""
 
 from fastapi import FastAPI, status
-import jwt
 import pytest
 
-from src.adapters.cache.repositories import RedisRevokedTokensRepository
+from src.adapters.cache.repositories import RedisRevokedTokensRepository, RedisSessionRepository
 from src.adapters.filesystem.repositories import FilePrivateJwkRepository
-from src.application import EnsureTokenActive, RevokeToken, SignToken, VerifyToken
+from src.application import EnsureTokenActive, RevokeSession, SignToken, VerifyToken
 from src.application.jwk import RotateJwk
 from src.config import config
-from src.domain.tokens import AccessTokenConfig
+from src.domain.tokens import RefreshTokenClaims, RefreshTokenConfig
 from src.interface.auth.deps import (
     get_ensure_token_active,
-    get_revoke_token,
-    get_verify_token,
+    get_revoke_session,
+    get_verify_refresh_token,
 )
 from tests.asgi_client import ASGIClient
 from tests.doubles import InMemoryRedis
 
 LOGOUT_PATH = "/auth/logout"
 SUBJECT = 42
-SUBJECT_ROLE = "user"
 SID = "session-under-test"
 TTL_SECONDS = 3600
 
@@ -28,27 +26,28 @@ TTL_SECONDS = 3600
 @pytest.fixture
 def logout_client(
     api_app: FastAPI,
-    verify_token: VerifyToken,
+    verify_refresh_token: VerifyToken[RefreshTokenClaims],
     blacklisted_tokens_repository: RedisRevokedTokensRepository,
+    session_repository: RedisSessionRepository,
 ) -> ASGIClient:
-    """Отдаёт клиент выхода с подменой проверки токена и хранилища отзыва.
+    """Отдаёт клиент выхода с подменой проверки refresh-токена и хранилища отзыва.
 
     Args:
         api_app (FastAPI): Приложение под тестом.
-        verify_token (VerifyToken): Use case проверки токенов поверх
-            подмены Redis с опубликованными JWK.
+        verify_refresh_token (VerifyToken[RefreshTokenClaims]): Use case проверки
+            refresh-токенов поверх подмены Redis с опубликованными JWK.
         blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий
             отозванных токенов поверх подмены Redis.
 
     Returns:
         ASGIClient: Клиент маршрута выхода.
     """
-    api_app.dependency_overrides[get_verify_token] = lambda: verify_token
+    api_app.dependency_overrides[get_verify_refresh_token] = lambda: verify_refresh_token
     api_app.dependency_overrides[get_ensure_token_active] = lambda: EnsureTokenActive(
         blacklisted_tokens_repository
     )
-    api_app.dependency_overrides[get_revoke_token] = lambda: RevokeToken(
-        blacklisted_tokens_repository
+    api_app.dependency_overrides[get_revoke_session] = lambda: RevokeSession(
+        blacklisted_tokens_repository, session_repository
     )
 
     return ASGIClient(api_app)
@@ -56,92 +55,82 @@ def logout_client(
 
 async def _issue_token(
     rotate_jwk: RotateJwk,
-    sign_token: SignToken,
+    sign_refresh_token: SignToken,
 ) -> str:
-    """Публикует ключ и выпускает access-токен для проверки выхода.
+    """Публикует ключ и выпускает refresh-токен для проверки выхода.
 
     Args:
         rotate_jwk (RotateJwk): Use case генерации и публикации ключей.
-        sign_token (SignToken): Use case выпуска токенов.
+        sign_refresh_token (SignToken): Use case выпуска refresh-токенов.
 
     Returns:
-        str: Подписанный access-токен.
+        str: Подписанный refresh-токен.
     """
     await rotate_jwk(TTL_SECONDS)
-    token, _ = await sign_token(SUBJECT, SID, not_required={"srl": SUBJECT_ROLE})
+    token, _ = await sign_refresh_token(SUBJECT, SID)
 
     return token
 
 
-def _authorization(token: str) -> dict[str, str]:
-    """Собирает заголовок авторизации с Bearer-токеном.
+def _cookie(token: str) -> dict[str, str]:
+    """Собирает заголовок cookie с refresh-токеном.
 
     Args:
-        token (str): Access-токен.
+        token (str): Refresh-токен.
 
     Returns:
-        dict[str, str]: Заголовок `Authorization`.
+        dict[str, str]: Заголовок `Cookie`.
     """
-    return {"Authorization": f"Bearer {token}"}
-
-
-def _token_jti(token: str) -> str:
-    """Возвращает `jti` токена без проверки подписи.
-
-    Args:
-        token (str): Подписанный JWT.
-
-    Returns:
-        str: Идентификатор токена (`jti`).
-    """
-    return jwt.decode(token, options={"verify_signature": False})["jti"]
+    return {"cookie": f"refresh_token={token}"}
 
 
 async def test_logout_revokes_token_and_returns_no_content(
     logout_client: ASGIClient,
     rotate_jwk: RotateJwk,
-    sign_token: SignToken,
+    sign_refresh_token: SignToken,
     redis_double: InMemoryRedis,
 ) -> None:
-    """Выход с действующим токеном.
+    """Выход с действующим refresh-токеном.
 
-    Given: клиент с действующим access-токеном,
+    Given: клиент с действующим refresh-токеном,
     When: он завершает сессию,
-    Then: приходит 204 без тела, а токен попадает в блэклист до конца срока действия.
+    Then: приходит 204 без тела, а сессия (`sid`) попадает в блэклист до конца срока
+    действия refresh-токена.
     """
     # Дано
-    token = await _issue_token(rotate_jwk, sign_token)
+    token = await _issue_token(rotate_jwk, sign_refresh_token)
 
     # Когда
-    response = await logout_client.post(LOGOUT_PATH, headers=_authorization(token))
+    response = await logout_client.post(LOGOUT_PATH, headers=_cookie(token))
 
     # Тогда
     assert response.status_code == status.HTTP_204_NO_CONTENT
     assert response.body == b""
     assert "content-type" not in response.headers
+    assert "refresh_token" in response.headers.get("set-cookie", "")
 
-    key = f"token:access:revoked:{_token_jti(token)}"
+    key = f"session:revoked:{SID}"
     assert redis_double.values[key] == "1"
-    assert 0 < redis_double.ttl[key] <= config.security.ACCESS_TOKEN_TTL
+    assert 0 < redis_double.ttl[key] <= config.security.REFRESH_TOKEN_TTL
 
 
 async def test_logout_rejects_already_revoked_token(
     logout_client: ASGIClient,
     rotate_jwk: RotateJwk,
-    sign_token: SignToken,
+    sign_refresh_token: SignToken,
 ) -> None:
-    """Повторный выход с тем же токеном.
+    """Повторный выход с тем же refresh-токеном.
 
-    Given: токен уже отозван предыдущим выходом,
+    Given: refresh-токен уже отозван предыдущим выходом,
     When: клиент повторяет выход с этим токеном,
     Then: приходит 403: отозванный токен больше не принимается.
     """
     # Дано
-    token = await _issue_token(rotate_jwk, sign_token)
-    await logout_client.post(LOGOUT_PATH, headers=_authorization(token))
+    token = await _issue_token(rotate_jwk, sign_refresh_token)
+    await logout_client.post(LOGOUT_PATH, headers=_cookie(token))
 
     # Когда
-    response = await logout_client.post(LOGOUT_PATH, headers=_authorization(token))
+    response = await logout_client.post(LOGOUT_PATH, headers=_cookie(token))
 
     # Тогда
     assert response.status_code == status.HTTP_403_FORBIDDEN
@@ -151,12 +140,12 @@ async def test_logout_rejects_already_revoked_token(
     }
 
 
-async def test_logout_requires_bearer_token(logout_client: ASGIClient) -> None:
-    """Выход без заголовка авторизации.
+async def test_logout_requires_refresh_cookie(logout_client: ASGIClient) -> None:
+    """Выход без refresh-токена в cookie.
 
-    Given: запрос без заголовка `Authorization`,
+    Given: запрос без cookie с refresh-токеном,
     When: клиент пытается завершить сессию,
-    Then: приходит 401 с требованием Bearer-аутентификации.
+    Then: приходит 401: сессию не идентифицировать.
     """
     # Когда
     response = await logout_client.post(LOGOUT_PATH)
@@ -180,7 +169,7 @@ async def test_logout_rejects_invalid_token(
     Then: приходит 403: токен не проходит проверку.
     """
     # Когда
-    response = await logout_client.post(LOGOUT_PATH, headers=_authorization("not-a-jwt"))
+    response = await logout_client.post(LOGOUT_PATH, headers=_cookie("not-a-jwt"))
 
     # Тогда
     assert response.status_code == status.HTTP_403_FORBIDDEN
@@ -192,22 +181,22 @@ async def test_logout_rejects_expired_token(
     rotate_jwk: RotateJwk,
     private_jwk_repository: FilePrivateJwkRepository,
 ) -> None:
-    """Выход с просроченным токеном.
+    """Выход с просроченным refresh-токеном.
 
-    Given: срок действия токена уже истёк,
+    Given: срок действия refresh-токена уже истёк,
     When: клиент пытается завершить сессию,
     Then: приходит 403: просроченный токен не принимается.
     """
     # Дано
     await rotate_jwk(TTL_SECONDS)
     expired = SignToken(
-        AccessTokenConfig(issuer=config.app.NAME, audience=config.app.PROJECT, ttl=-1),
+        RefreshTokenConfig(issuer=config.app.NAME, audience=config.app.NAME, ttl=-1),
         private_jwk_repository,
     )
-    token, _ = await expired(SUBJECT, SID, not_required={"srl": SUBJECT_ROLE})
+    token, _ = await expired(SUBJECT, SID)
 
     # Когда
-    response = await logout_client.post(LOGOUT_PATH, headers=_authorization(token))
+    response = await logout_client.post(LOGOUT_PATH, headers=_cookie(token))
 
     # Тогда
     assert response.status_code == status.HTTP_403_FORBIDDEN

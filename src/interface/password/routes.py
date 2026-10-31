@@ -20,6 +20,7 @@ async def change_password(body: ChangePasswordRequestBody, current_user: Any) ->
         body (ChangePasswordRequestBody): Текущий и новый пароль.
         current_user (Any): Пользователь, которому принадлежит токен.
     """
+    # TODO: после смены пароля отозвать все сессии пользователя по `sid`.
     raise NotImplementedError
 
 

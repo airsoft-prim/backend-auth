@@ -15,7 +15,7 @@ from src.domain.enums import TokenType, UserRole
 from src.interface.auth.deps import (
     get_ensure_token_active,
     get_user,
-    get_verify_token,
+    get_verify_access_token,
 )
 from tests.asgi_client import ASGIClient
 from tests.doubles import InMemoryUserRepository, as_user_repository
@@ -62,7 +62,7 @@ def me_client(
         ASGIClient: Клиент маршрута профиля.
     """
     api_app.dependency_overrides[get_user] = lambda: GetUser(as_user_repository(user_repository))
-    api_app.dependency_overrides[get_verify_token] = lambda: verify_token
+    api_app.dependency_overrides[get_verify_access_token] = lambda: verify_token
     api_app.dependency_overrides[get_ensure_token_active] = lambda: EnsureTokenActive(
         blacklisted_tokens_repository
     )

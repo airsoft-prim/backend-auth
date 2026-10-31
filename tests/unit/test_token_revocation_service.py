@@ -4,8 +4,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from src.adapters.cache.repositories import RedisRevokedTokensRepository
-from src.application import EnsureTokenActive, RevokeToken
+from src.adapters.cache.repositories import RedisRevokedTokensRepository, RedisSessionRepository
+from src.application import EnsureTokenActive, RevokeSession, RevokeToken
 from src.domain.errors import TokenRevokedError
 from src.domain.tokens import AccessTokenClaims
 from tests.doubles import InMemoryRedis
@@ -122,6 +122,73 @@ async def test_ensure_active_rejects_revoked_token(
     ensure_token_active = EnsureTokenActive(blacklisted_tokens_repository)
     claims = _claims(expires_at=_expires_in(TTL_SECONDS))
     await revoke_token(claims)
+
+    # Когда / Тогда
+    with pytest.raises(TokenRevokedError, match="Token is revoked"):
+        await ensure_token_active(claims)
+
+
+async def test_revoke_session_stores_session_until_it_expires(
+    blacklisted_tokens_repository: RedisRevokedTokensRepository,
+    session_repository: RedisSessionRepository,
+    redis_double: InMemoryRedis,
+) -> None:
+    """Отзыв действующей сессии.
+
+    Given: сервис отзыва сессии и действующий refresh-токен,
+    When: сессия отзывается при выходе,
+    Then: в Redis появляется запись по `sid` с TTL, не превышающим срок жизни токена.
+    """
+    # Дано
+    revoke_session = RevokeSession(blacklisted_tokens_repository, session_repository)
+    claims = _claims(expires_at=_expires_in(TTL_SECONDS))
+
+    # Когда
+    await revoke_session(claims)
+
+    # Тогда
+    key = f"session:revoked:{SID}"
+    assert redis_double.values[key] == "1"
+    assert 0 < redis_double.ttl[key] <= TTL_SECONDS
+
+
+async def test_revoke_session_does_not_store_expired_session(
+    blacklisted_tokens_repository: RedisRevokedTokensRepository,
+    session_repository: RedisSessionRepository,
+    redis_double: InMemoryRedis,
+) -> None:
+    """Отзыв уже истёкшей сессии.
+
+    Given: срок действия refresh-токена уже истёк,
+    When: сервис пытается отозвать сессию,
+    Then: запись не создаётся: проверять отзыв истёкшей сессии бессмысленно.
+    """
+    # Дано
+    revoke_session = RevokeSession(blacklisted_tokens_repository, session_repository)
+    claims = _claims(expires_at=_expires_in(-TTL_SECONDS))
+
+    # Когда
+    await revoke_session(claims)
+
+    # Тогда
+    assert redis_double.values == {}
+
+
+async def test_ensure_active_rejects_revoked_session(
+    blacklisted_tokens_repository: RedisRevokedTokensRepository,
+    session_repository: RedisSessionRepository,
+) -> None:
+    """Проверка токена отозванной сессии.
+
+    Given: сессия токена отозвана при выходе, а сам `jti` не отозван,
+    When: сервис проверяет токен перед аутентификацией,
+    Then: сервис сообщает, что токен отозван.
+    """
+    # Дано
+    revoke_session = RevokeSession(blacklisted_tokens_repository, session_repository)
+    ensure_token_active = EnsureTokenActive(blacklisted_tokens_repository)
+    claims = _claims(expires_at=_expires_in(TTL_SECONDS))
+    await revoke_session(claims)
 
     # Когда / Тогда
     with pytest.raises(TokenRevokedError, match="Token is revoked"):

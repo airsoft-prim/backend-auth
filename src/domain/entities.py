@@ -30,7 +30,10 @@ class User:
 class Session:
     """Сессия пользователя.
 
-    Связывает access- и refresh-токены через `id` (`sid`).
+    Связывает access- и refresh-токены через `id` (`sid`). Контекст входа (`ip`,
+    `user_agent`, `platform`, `browser`, `location`) фиксируется при создании сессии
+    и показывается владельцу в списке активных сессий. Поле `location` зарезервировано
+    под геолокацию по IP и пока не заполняется.
     """
 
     id: str
@@ -38,3 +41,9 @@ class Session:
     created_at: datetime
     expires_at: datetime
     revoked_at: datetime | None = None
+
+    ip: str | None = None
+    user_agent: str | None = None
+    platform: str | None = None
+    browser: str | None = None
+    location: str | None = None

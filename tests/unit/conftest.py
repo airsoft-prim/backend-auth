@@ -105,7 +105,10 @@ def raw_token_signer(key_store_dir: Path) -> RawTokenSigner:
             msg = "Key store holds a key that is not Ed25519."
             raise TypeError(msg)
 
-        headers = {} if key_id is None else {"kid": key_id}
+        headers = {"typ": "access"}
+
+        if key_id is not None:
+            headers["kid"] = key_id
 
         return jwt.encode(claims, private_key, algorithm=SIGNING_ALGORITHM, headers=headers)
 

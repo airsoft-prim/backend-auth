@@ -109,6 +109,11 @@ class RedisSessionRepository(RedisRepository):
                 "created_at": session.created_at.isoformat(),
                 "expires_at": session.expires_at.isoformat(),
                 "revoked_at": session.revoked_at.isoformat() if session.revoked_at else None,
+                "ip": session.ip,
+                "user_agent": session.user_agent,
+                "platform": session.platform,
+                "browser": session.browser,
+                "location": session.location,
             }
         )
 
@@ -145,4 +150,9 @@ class RedisSessionRepository(RedisRepository):
             revoked_at=(
                 datetime.fromisoformat(data["revoked_at"]) if data.get("revoked_at") else None
             ),
+            ip=data.get("ip"),
+            user_agent=data.get("user_agent"),
+            platform=data.get("platform"),
+            browser=data.get("browser"),
+            location=data.get("location"),
         )

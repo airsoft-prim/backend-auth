@@ -9,6 +9,7 @@ from src.domain.errors import (
     JWTEncryptionError,
     ProviderError,
     SecurityError,
+    SessionNotFoundError,
     UserAlreadyExistsError,
     UserAuthenticationError,
     UserAuthorizationError,
@@ -142,6 +143,18 @@ async def user_exists_exc_handler(_: Request, exc: UserAlreadyExistsError) -> JS
     return JSONResponse(content=content, status_code=status.HTTP_409_CONFLICT)
 
 
+async def session_not_found_exc_handler(_: Request, exc: SessionNotFoundError) -> JSONResponse:
+    """Обработчик ошибки доступа к чужой или несуществующей сессии."""
+    logger.opt(exception=exc).debug("Session not found or not owned.")
+
+    content = {
+        "message": "Session not found.",
+        "details": "The session does not exist or does not belong to the current user.",
+    }
+
+    return JSONResponse(content=content, status_code=status.HTTP_404_NOT_FOUND)
+
+
 _handling_map: ExceptionsHandlingMap = {
     Exception: unexpected_exc_handler,
     ApplicationError: uncought_exc_handler,
@@ -152,6 +165,7 @@ _handling_map: ExceptionsHandlingMap = {
     UserAuthenticationError: login_exc_handler,
     UserAuthorizationError: user_auth_exc_handler,
     UserAlreadyExistsError: user_exists_exc_handler,
+    SessionNotFoundError: session_not_found_exc_handler,
 }
 
 register_exception_handlers = ExceptionHandlersRegistrator(_handling_map)

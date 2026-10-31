@@ -48,3 +48,7 @@ class JWTDecryptionError(SecurityError):
 
 class TokenRevokedError(JWTDecryptionError):
     """Ошибка проверки отозванного токена."""
+
+
+class SessionNotFoundError(ServiceError):
+    """Ошибка доступа к сессии: сессии нет или она не принадлежит пользователю."""

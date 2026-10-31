@@ -17,6 +17,8 @@ from src.domain.ports import UserRepository
 
 __all__ = ["InMemoryRedis", "InMemoryUserRepository", "as_redis", "as_user_repository"]
 
+type StringSet = set[str]
+
 
 class InMemoryPipeline:
     """Конвейер команд подмены Redis: копит TTL и применяет их по `execute`."""
@@ -87,6 +89,7 @@ class InMemoryRedis:
         """
         self.values: dict[str, str] = {}
         self.ttl: dict[str, int] = {}
+        self.sets: dict[str, set[str]] = {}
         self._unavailable = unavailable
 
     async def set(self, key: str, value: str, *, ex: int | None = None) -> None:
@@ -130,6 +133,40 @@ class InMemoryRedis:
         self._ensure_available()
 
         return int(key in self.values)
+
+    async def sadd(self, key: str, value: str) -> int:
+        """Добавляет значение в множество, как `SADD` у Redis.
+
+        Args:
+            key (str): Ключ множества.
+            value (str): Добавляемое значение.
+
+        Returns:
+            int: 1, если значение добавлено, иначе 0, как у Redis.
+        """
+        self._ensure_available()
+
+        members = self.sets.setdefault(key, set())
+
+        if value in members:
+            return 0
+
+        members.add(value)
+
+        return 1
+
+    async def smembers(self, key: str) -> StringSet:
+        """Возвращает множество по ключу, как `SMEMBERS` у Redis.
+
+        Args:
+            key (str): Ключ множества.
+
+        Returns:
+            set[str]: Члены множества.
+        """
+        self._ensure_available()
+
+        return self.sets.get(key, set())
 
     async def mget(self, keys: Sequence[str]) -> list[str | None]:
         """Возвращает значения нескольких ключей.

@@ -1,7 +1,13 @@
 from ._base import AbstractUseCase
 from .auth import GetUser, LoginUser, RegisterUser
 from .jwk import CollectJwks, RotateJwk
-from .session import CreateSession, SlideSession
+from .session import (
+    CloseOtherSessions,
+    CloseSession,
+    CreateSession,
+    ListSessions,
+    SlideSession,
+)
 from .token import (
     Authorize,
     EnsureTokenActive,
@@ -16,11 +22,14 @@ from .token import (
 __all__ = [
     "AbstractUseCase",
     "Authorize",
+    "CloseOtherSessions",
+    "CloseSession",
     "CollectJwks",
     "CreateSession",
     "EnsureTokenActive",
     "GetUser",
     "IssueTokenPair",
+    "ListSessions",
     "LoginUser",
     "RegisterUser",
     "RevokeSession",
