@@ -20,6 +20,7 @@ from .deps import (
     get_current_user,
     get_issue_token_pair,
     get_login_user,
+    get_refresh_claims,
     get_refresh_token,
     get_register_user,
     get_revoke_session,
@@ -103,7 +104,7 @@ async def get_me(current_user: Annotated[User, Depends(get_current_user)]) -> Us
 @router.post("/refresh", **REFRESH_DOCS)
 async def refresh_access_token(
     response: Response,
-    claims: Annotated[RefreshTokenClaims, Depends(get_refresh_token)],
+    claims: Annotated[RefreshTokenClaims, Depends(get_refresh_claims)],
     rotate: Annotated[RotateRefreshToken, Depends(get_rotate_refresh_token)],
     fetch_user: Annotated[GetUser, Depends(get_user)],
     issue_tokens: Annotated[IssueTokenPair, Depends(get_issue_token_pair)],
@@ -122,7 +123,8 @@ async def refresh_access_token(
     """
     await rotate(claims)
 
-    # TODO: инвалидировать ранее выданные access-токены этой сессии.
+    # Access-токены живут считанные минуты и не отзываются по отдельности: их
+    # кража ограничена коротким сроком жизни, а сессией управляет refresh-токен.
     user = await fetch_user(int(claims["sub"]))
     pair = await issue_tokens(claims["sub"], claims["sid"], user.system_role)
 

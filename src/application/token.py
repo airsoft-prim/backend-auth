@@ -288,26 +288,54 @@ class RevokeToken(AbstractUseCase):
 
 
 class RotateRefreshToken(AbstractUseCase):
-    """Use case ротации refresh-токена: продление сессии и отзыв старого токена."""
+    """Use case ротации refresh-токена с обнаружением повторного использования."""
 
-    def __init__(self, slide: SlideSession, revoke: RevokeToken) -> None:
+    def __init__(
+        self,
+        slide_session: SlideSession,
+        revoke_token: RevokeToken,
+        revoke_session: RevokeSession,
+        tokens: RevokedTokensRepository,
+        sessions: RevokedSessionsRepository,
+    ) -> None:
         """Инициализация класса.
 
         Args:
-            slide (SlideSession): Use case продления сессии (sliding expiration).
-            revoke (RevokeToken): Use case отзыва отдельного токена.
+            slide_session (SlideSession): Use case продления сессии (sliding expiration).
+            revoke_token (RevokeToken): Use case отзыва отдельного токена.
+            revoke_session (RevokeSession): Use case отзыва всей сессии при краже.
+            tokens (RevokedTokensRepository): Порт доступа к отозванным токенам.
+            sessions (RevokedSessionsRepository): Порт доступа к отозванным сессиям.
         """
-        self._slide = slide
-        self._revoke = revoke
+        self._slide_session = slide_session
+        self._revoke_token = revoke_token
+        self._revoke_session = revoke_session
+        self._tokens = tokens
+        self._sessions = sessions
 
     async def __call__(self, claims: RefreshTokenClaims) -> None:
         """Продлевает сессию и отзывает старый refresh-токен.
 
+        Повторное предъявление уже ротированного refresh-токена — признак кражи:
+        в этом случае отзывается вся сессия, а не только предъявленный токен.
+
         Args:
             claims (RefreshTokenClaims): Проверенные claims refresh-токена.
+
+        Raises:
+            TokenRevokedError: Сессия отозвана или refresh-токен уже ротирован.
         """
-        await self._slide(claims["sid"])
-        await self._revoke(claims, TokenType.REFRESH)
+        if await self._sessions.check(claims["sid"]):
+            msg = "Token is revoked."
+            raise TokenRevokedError(msg) from None
+
+        if await self._tokens.check(TokenType.REFRESH, claims["jti"]):
+            await self._revoke_session(claims)
+            msg = "Token is revoked."
+            raise TokenRevokedError(msg) from None
+
+        await self._slide_session(claims["sid"])
+        await self._revoke_token(claims, TokenType.REFRESH)
 
 
 class RevokeSession(AbstractUseCase):
@@ -324,7 +352,11 @@ class RevokeSession(AbstractUseCase):
         self._sessions = sessions
 
     async def __call__(self, claims: TokenClaims) -> None:
-        """Помечает сессию отозванной до истечения срока её refresh-токена.
+        """Помечает сессию отозванной до истечения срока её действия.
+
+        Срок жизни маркера берётся из записи сессии (`expires_at`), а не из
+        предъявленного токена: при повторном использовании refresh-токена его `exp`
+        относится к старому токену, тогда как сессия уже продлена новым.
 
         Все токены сессии (`sid`) становятся недействительными: их проверка в
         `EnsureTokenActive` сначала сверяется с отозванной сессией.
@@ -332,14 +364,21 @@ class RevokeSession(AbstractUseCase):
         Args:
             claims (TokenClaims): Проверенные claims refresh-токена сессии.
         """
-        if (ttl := claims["exp"] - int(datetime.now(UTC).timestamp())) <= 0:
+        now = datetime.now(UTC)
+        session = await self._sessions.get(claims["sid"])
+
+        if session is None:
+            ttl = claims["exp"] - int(now.timestamp())
+        else:
+            ttl = int((session.expires_at - now).total_seconds())
+
+        if ttl <= 0:
             return
 
         await self._revoked.store(claims["sid"], ttl)
 
-        session = await self._sessions.get(claims["sid"])
         if session is not None and session.revoked_at is None:
-            session.revoked_at = datetime.now(UTC)
+            session.revoked_at = now
             await self._sessions.save(session)
 
 

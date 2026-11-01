@@ -10,8 +10,9 @@ from src.adapters.cache.repositories import (
     RedisSessionRepository,
 )
 from src.application import (
-    EnsureTokenActive,
+    RevokeSession,
     RevokeToken,
+    RotateRefreshToken,
     SignToken,
     SlideSession,
     VerifyToken,
@@ -23,16 +24,14 @@ from src.domain.entities import User
 from src.domain.enums import UserRole
 from src.domain.tokens import RefreshTokenClaims
 from src.interface.auth.deps import (
-    get_ensure_token_active,
-    get_revoke_token,
+    get_rotate_refresh_token,
     get_sign_access_token,
     get_sign_refresh_token,
-    get_slide_session,
     get_user,
     get_verify_refresh_token,
 )
 from tests.asgi_client import ASGIClient
-from tests.doubles import InMemoryUserRepository, as_user_repository
+from tests.doubles import InMemoryRedis, InMemoryUserRepository, as_user_repository
 
 REFRESH_PATH = "/auth/refresh"
 USER_ID = 42
@@ -88,16 +87,14 @@ def refresh_client(  # noqa: PLR0913, PLR0917
         ASGIClient: Клиент маршрута обновления.
     """
     api_app.dependency_overrides[get_verify_refresh_token] = lambda: verify_refresh_token
-    api_app.dependency_overrides[get_ensure_token_active] = lambda: EnsureTokenActive(
-        blacklisted_tokens_repository, revoked_sessions_repository
-    )
     api_app.dependency_overrides[get_sign_access_token] = lambda: sign_token
     api_app.dependency_overrides[get_sign_refresh_token] = lambda: sign_refresh_token
-    api_app.dependency_overrides[get_slide_session] = lambda: SlideSession(
-        session_repository, config.security.REFRESH_TOKEN_TTL
-    )
-    api_app.dependency_overrides[get_revoke_token] = lambda: RevokeToken(
-        blacklisted_tokens_repository
+    api_app.dependency_overrides[get_rotate_refresh_token] = lambda: RotateRefreshToken(
+        SlideSession(session_repository, config.security.REFRESH_TOKEN_TTL),
+        RevokeToken(blacklisted_tokens_repository),
+        RevokeSession(revoked_sessions_repository, session_repository),
+        blacklisted_tokens_repository,
+        revoked_sessions_repository,
     )
     api_app.dependency_overrides[get_user] = lambda: GetUser(as_user_repository(user_repository))
 
@@ -202,6 +199,30 @@ async def test_refresh_rotates_refresh_token(
 
     response = await refresh_client.post(REFRESH_PATH, headers=_cookie(token))
     assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+async def test_refresh_reuse_revokes_session(
+    refresh_client: ASGIClient,
+    rotate_jwk: RotateJwk,
+    sign_refresh_token: SignToken,
+    redis_double: InMemoryRedis,
+) -> None:
+    """Повторное использование refresh-токена отзывает сессию.
+
+    Given: refresh-токен уже ротирован один раз,
+    When: тот же токен предъявляется повторно,
+    Then: приходит 403, а сессия (`sid`) помечается отозванной.
+    """
+    # Дано
+    token = await _issue_refresh_token(rotate_jwk, sign_refresh_token)
+    await refresh_client.post(REFRESH_PATH, headers=_cookie(token))
+
+    # Когда
+    response = await refresh_client.post(REFRESH_PATH, headers=_cookie(token))
+
+    # Тогда
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert redis_double.values[f"session:revoked:{SID}"] == "1"
 
 
 async def test_refresh_requires_refresh_cookie(refresh_client: ASGIClient) -> None:

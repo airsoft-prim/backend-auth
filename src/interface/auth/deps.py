@@ -32,7 +32,7 @@ from src.application.token import (
 from src.config import config
 from src.domain.entities import User
 from src.domain.enums import TokenType
-from src.domain.errors import JWTDecryptionError
+from src.domain.errors import JWTDecryptionError, UserAuthorizationError
 from src.domain.tokens import (
     AccessTokenClaims,
     AccessTokenConfig,
@@ -261,17 +261,27 @@ async def get_slide_session(
 async def get_rotate_refresh_token(
     slide: Annotated[SlideSession, Depends(get_slide_session)],
     revoke: Annotated[RevokeToken, Depends(get_revoke_token)],
+    revoke_session: Annotated[RevokeSession, Depends(get_revoke_session)],
+    tokens_client: Annotated[Redis, Depends(get_bounded_client(StorageNumber.TOKENS.value))],
 ) -> RotateRefreshToken:
     """Предоставляет use case ротации refresh-токена на время запроса.
 
     Args:
         slide (SlideSession): Use case продления сессии.
         revoke (RevokeToken): Use case отзыва старого refresh-токена.
+        revoke_session (RevokeSession): Use case отзыва сессии при краже.
+        tokens_client (Redis): Клиент Redis с отозванными токенами и сессиями.
 
     Returns:
         RotateRefreshToken: Use case ротации refresh-токена.
     """
-    return RotateRefreshToken(slide, revoke)
+    return RotateRefreshToken(
+        slide,
+        revoke,
+        revoke_session,
+        RedisRevokedTokensRepository(tokens_client),
+        RedisRevokedSessionsRepository(tokens_client),
+    )
 
 
 async def get_authorize_access(
@@ -347,6 +357,33 @@ async def get_refresh_token(
         RefreshTokenClaims: Проверенные claims refresh-токена.
     """
     return await authorize(refresh_token)
+
+
+async def get_refresh_claims(
+    verify: Annotated[VerifyToken[RefreshTokenClaims], Depends(get_verify_refresh_token)],
+    refresh_token: Annotated[str | None, Cookie()] = None,
+) -> RefreshTokenClaims:
+    """Проверяет refresh-токен из cookie без проверки отзыва.
+
+    Отзыв сессии и обнаружение повторного использования выполняет use case ротации:
+    ему нужен предъявленный токен, чтобы отозвать сессию целиком при краже.
+
+    Args:
+        verify (VerifyToken[RefreshTokenClaims]): Use case проверки refresh-токена.
+        refresh_token (str | None): Refresh-токен из HTTP-only cookie.
+
+    Raises:
+        UserAuthorizationError: Refresh-токен не передан.
+        JWTDecryptionError: Токен недействителен или просрочен.
+
+    Returns:
+        RefreshTokenClaims: Проверенные claims refresh-токена.
+    """
+    if refresh_token is None:
+        msg = "Bearer token is missing."
+        raise UserAuthorizationError(msg)
+
+    return await verify(refresh_token)
 
 
 async def get_current_user(

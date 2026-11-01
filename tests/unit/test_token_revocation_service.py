@@ -1,6 +1,6 @@
 """Тесты сервиса отзыва токенов."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -9,9 +9,16 @@ from src.adapters.cache.repositories import (
     RedisRevokedTokensRepository,
     RedisSessionRepository,
 )
-from src.application import EnsureTokenActive, RevokeSession, RevokeToken
+from src.application import (
+    EnsureTokenActive,
+    RevokeSession,
+    RevokeToken,
+    RotateRefreshToken,
+    SlideSession,
+)
+from src.domain.entities import Session
 from src.domain.errors import TokenRevokedError
-from src.domain.tokens import AccessTokenClaims
+from src.domain.tokens import AccessTokenClaims, RefreshTokenClaims
 from tests.doubles import InMemoryRedis
 
 TOKEN_ID = "token-under-test"  # noqa: S105
@@ -206,3 +213,57 @@ async def test_ensure_active_rejects_revoked_session(
     # Когда / Тогда
     with pytest.raises(TokenRevokedError, match="Token is revoked"):
         await ensure_token_active(claims)
+
+
+async def test_rotate_revokes_session_on_refresh_token_reuse(
+    blacklisted_tokens_repository: RedisRevokedTokensRepository,
+    revoked_sessions_repository: RedisRevokedSessionsRepository,
+    session_repository: RedisSessionRepository,
+    redis_double: InMemoryRedis,
+) -> None:
+    """Повторное использование refresh-токена отзывает сессию.
+
+    Given: активная сессия и refresh-токен, уже ротированный один раз,
+    When: ротация повторяется с тем же токеном,
+    Then: сессия помечается отозванной до истечения её срока действия.
+    """
+    # Дано
+    now = datetime.now(UTC)
+    await session_repository.save(
+        Session(
+            id=SID,
+            user_id=42,
+            created_at=now,
+            expires_at=now + timedelta(seconds=TTL_SECONDS),
+        )
+    )
+    rotate = RotateRefreshToken(
+        SlideSession(session_repository, TTL_SECONDS),
+        RevokeToken(blacklisted_tokens_repository),
+        RevokeSession(revoked_sessions_repository, session_repository),
+        blacklisted_tokens_repository,
+        revoked_sessions_repository,
+    )
+    expires_at = _expires_in(TTL_SECONDS)
+    claims = RefreshTokenClaims(
+        iss="Auth Server",
+        sub="42",
+        aud="Auth Server",
+        iat=expires_at - TTL_SECONDS,
+        exp=expires_at,
+        jti=TOKEN_ID,
+        sid=SID,
+    )
+    await rotate(claims)
+
+    # Когда / Тогда
+    with pytest.raises(TokenRevokedError, match="Token is revoked"):
+        await rotate(claims)
+
+    key = f"session:revoked:{SID}"
+    assert redis_double.values[key] == "1"
+    assert 0 < redis_double.ttl[key] <= TTL_SECONDS
+
+    stored = await session_repository.get(SID)
+    assert stored is not None
+    assert stored.revoked_at is not None

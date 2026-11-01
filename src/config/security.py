@@ -14,6 +14,6 @@ class SecurityConfiguration(BaseSettings):
     KEY_OVERWRITE_ON_RESTART: bool = Field(default=False)
     KEY_STORE_DIRECTORY: Path = Field(default=Path(".keys"))
 
-    ACCESS_TOKEN_TTL: int = Field(default=int(timedelta(hours=24).total_seconds()), gt=0)
+    ACCESS_TOKEN_TTL: int = Field(default=int(timedelta(minutes=5).total_seconds()), gt=0)
     REFRESH_TOKEN_TTL: int = Field(default=int(timedelta(days=30).total_seconds()), gt=0)
     MAX_ACTIVE_SESSIONS: int = Field(default=5, gt=0)
