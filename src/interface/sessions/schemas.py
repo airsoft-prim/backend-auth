@@ -3,6 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
+# TODO: Добавить геолокацию.
 class SessionData(BaseModel):
     """Активная сессия пользователя."""
 
@@ -15,12 +16,3 @@ class SessionData(BaseModel):
     ip: str | None = Field(default=None, description="IP-адрес входа.")
     platform: str | None = Field(default=None, description="Платформа входа (ОС).")
     browser: str | None = Field(default=None, description="Браузер входа.")
-    location: str | None = Field(
-        default=None, description="Геолокация по IP; зарезервировано, пока не заполняется."
-    )
-
-
-class SessionsList(BaseModel):
-    """Список активных сессий пользователя."""
-
-    sessions: list[SessionData] = Field(default_factory=list, description="Активные сессии.")

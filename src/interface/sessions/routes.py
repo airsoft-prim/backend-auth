@@ -12,28 +12,29 @@ from .deps import (
     get_list_sessions,
 )
 from .docs import CLOSE_OTHER_SESSIONS_DOCS, CLOSE_SESSION_DOCS, LIST_SESSIONS_DOCS
-from .schemas import SessionData, SessionsList
+from .schemas import SessionData
 
 router = APIRouter(prefix="/sessions", tags=["Сессии"])
 
 
 @router.get("", **LIST_SESSIONS_DOCS)
-async def list_sessions(
+async def get_all_sessions(
     current: Annotated[CurrentSession, Depends(get_current_session)],
-    list_sessions_: Annotated[ListSessions, Depends(get_list_sessions)],
-) -> SessionsList:
+    list_sessions: Annotated[ListSessions, Depends(get_list_sessions)],
+) -> list[SessionData]:
     """Функция получения активных сессий владельца токена.
 
     Args:
         current (CurrentSession): Владелец и `sid` сессии запроса.
-        list_sessions_ (ListSessions): Use case списка активных сессий.
+        list_sessions (ListSessions): Use case списка активных сессий.
 
     Returns:
-        SessionsList: Активные сессии с признаком текущей.
+        list[SessionData]: Активные сессии с признаком текущей.
     """
-    sessions = await list_sessions_(current.user_id)
+    sessions = await list_sessions(current.user_id)
 
-    items = [
+    # TODO: Упросить валидацию до from_attributes
+    return [
         SessionData(
             id=session.id,
             current=session.id == current.sid,
@@ -42,17 +43,14 @@ async def list_sessions(
             ip=session.ip,
             platform=session.platform,
             browser=session.browser,
-            location=session.location,
         )
         for session in sessions
     ]
 
-    return SessionsList(sessions=items)
-
 
 @router.delete("/{session_id}", response_class=Response, **CLOSE_SESSION_DOCS)
 async def close_session(
-    session_id: Annotated[str, Path(description="Идентификатор сессии (`sid`).")],
+    session_id: Annotated[str, Path(description="Идентификатор сессии.")],
     current: Annotated[CurrentSession, Depends(get_current_session)],
     close: Annotated[CloseSession, Depends(get_close_session)],
 ) -> None:

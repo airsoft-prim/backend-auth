@@ -122,9 +122,7 @@ async def refresh_access_token(
     """
     await rotate(claims)
 
-    # TODO: инвалидировать ранее выданные access-токены этой сессии. Ротация
-    # отзывает только старый refresh-токен, поэтому access-токены от предыдущих
-    # /refresh остаются действительными до конца своего срока жизни.
+    # TODO: инвалидировать ранее выданные access-токены этой сессии.
     user = await fetch_user(int(claims["sub"]))
     pair = await issue_tokens(claims["sub"], claims["sid"], user.system_role)
 

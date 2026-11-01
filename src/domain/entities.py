@@ -26,6 +26,9 @@ class User:
     updated_at: datetime | None = None
 
 
+# TODO: Добавить геолокацию.
+
+
 @dataclass(slots=True)
 class Session:
     """Сессия пользователя.
@@ -38,6 +41,7 @@ class Session:
 
     id: str
     user_id: int
+
     created_at: datetime
     expires_at: datetime
     revoked_at: datetime | None = None
