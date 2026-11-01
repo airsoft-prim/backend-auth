@@ -5,13 +5,14 @@ from fastapi import Depends
 from redis.asyncio import Redis
 
 from src.adapters.cache import StorageNumber, get_bounded_client
-from src.adapters.cache.repositories import RedisRevokedTokensRepository, RedisSessionRepository
+from src.adapters.cache.repositories import RedisRevokedSessionsRepository, RedisSessionRepository
 from src.application.session import CloseOtherSessions, CloseSession, ListSessions
 from src.domain.errors import JWTDecryptionError
 from src.domain.tokens import RefreshTokenClaims
 from src.interface.auth.deps import get_refresh_token
 
 
+# TODO: Будто бы это здесь быть не должно.
 @dataclass(frozen=True, slots=True)
 class CurrentSession:
     """Текущая сессия запроса: владелец и идентификатор из проверенного токена."""
@@ -72,7 +73,7 @@ async def get_close_session(
         CloseSession: Use case закрытия одной сессии.
     """
     return CloseSession(
-        RedisRevokedTokensRepository(tokens_client),
+        RedisRevokedSessionsRepository(tokens_client),
         RedisSessionRepository(sessions_client),
     )
 

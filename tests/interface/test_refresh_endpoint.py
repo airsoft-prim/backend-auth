@@ -4,7 +4,11 @@ from fastapi import FastAPI, status
 import jwt
 import pytest
 
-from src.adapters.cache.repositories import RedisRevokedTokensRepository, RedisSessionRepository
+from src.adapters.cache.repositories import (
+    RedisRevokedSessionsRepository,
+    RedisRevokedTokensRepository,
+    RedisSessionRepository,
+)
 from src.application import (
     EnsureTokenActive,
     RevokeToken,
@@ -61,6 +65,7 @@ def refresh_client(  # noqa: PLR0913, PLR0917
     sign_token: SignToken,
     sign_refresh_token: SignToken,
     blacklisted_tokens_repository: RedisRevokedTokensRepository,
+    revoked_sessions_repository: RedisRevokedSessionsRepository,
     session_repository: RedisSessionRepository,
     user_repository: InMemoryUserRepository,
 ) -> ASGIClient:
@@ -74,6 +79,8 @@ def refresh_client(  # noqa: PLR0913, PLR0917
         sign_refresh_token (SignToken): Use case подписи refresh-токенов.
         blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий
             отозванных токенов поверх подмены Redis.
+        revoked_sessions_repository (RedisRevokedSessionsRepository): Репозиторий
+            отозванных сессий поверх подмены Redis.
         session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены Redis.
         user_repository (InMemoryUserRepository): Подмена репозитория учётных записей.
 
@@ -82,7 +89,7 @@ def refresh_client(  # noqa: PLR0913, PLR0917
     """
     api_app.dependency_overrides[get_verify_refresh_token] = lambda: verify_refresh_token
     api_app.dependency_overrides[get_ensure_token_active] = lambda: EnsureTokenActive(
-        blacklisted_tokens_repository
+        blacklisted_tokens_repository, revoked_sessions_repository
     )
     api_app.dependency_overrides[get_sign_access_token] = lambda: sign_token
     api_app.dependency_overrides[get_sign_refresh_token] = lambda: sign_refresh_token

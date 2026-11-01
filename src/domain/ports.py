@@ -48,16 +48,22 @@ class PrivateJwkRepository(Protocol):
     async def store(self, payload: bytes) -> None: ...
 
 
+# TODO: перерабатывается — в сессионной модели инвалидация идёт через сессию, а не по
+# отдельному токену; отзыв по `jti` пока остаётся только для ротации refresh-токена.
 class RevokedTokensRepository(Protocol):
-    """Порт доступа к отозванным токенам и сессиям."""
+    """Порт доступа к отозванным токенам."""
 
     async def store(self, token_type: TokenType, token_id: str, ttl: int) -> None: ...
 
     async def check(self, token_type: TokenType, token_id: str) -> bool: ...
 
-    async def store_session(self, sid: str, ttl: int) -> None: ...
 
-    async def check_session(self, sid: str) -> bool: ...
+class RevokedSessionsRepository(Protocol):
+    """Порт доступа к отозванным сессиям."""
+
+    async def store(self, sid: str, ttl: int) -> None: ...
+
+    async def check(self, sid: str) -> bool: ...
 
 
 class SessionRepository(Protocol):

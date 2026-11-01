@@ -20,6 +20,7 @@ from .ports import (
     PasswordHasher,
     PrivateJwkRepository,
     PublicJwkRepository,
+    RevokedSessionsRepository,
     RevokedTokensRepository,
     UserRepository,
 )
@@ -49,6 +50,7 @@ __all__ = [
     "RefreshTokenClaims",
     "RefreshTokenConfig",
     "RepositoryError",
+    "RevokedSessionsRepository",
     "RevokedTokensRepository",
     "SecurityError",
     "ServiceError",

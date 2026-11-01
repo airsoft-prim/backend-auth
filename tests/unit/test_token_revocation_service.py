@@ -4,7 +4,11 @@ from datetime import UTC, datetime
 
 import pytest
 
-from src.adapters.cache.repositories import RedisRevokedTokensRepository, RedisSessionRepository
+from src.adapters.cache.repositories import (
+    RedisRevokedSessionsRepository,
+    RedisRevokedTokensRepository,
+    RedisSessionRepository,
+)
 from src.application import EnsureTokenActive, RevokeSession, RevokeToken
 from src.domain.errors import TokenRevokedError
 from src.domain.tokens import AccessTokenClaims
@@ -93,6 +97,7 @@ async def test_revoke_does_not_store_expired_token(
 
 async def test_ensure_active_accepts_token_that_is_not_revoked(
     blacklisted_tokens_repository: RedisRevokedTokensRepository,
+    revoked_sessions_repository: RedisRevokedSessionsRepository,
 ) -> None:
     """Проверка действующего токена.
 
@@ -101,7 +106,9 @@ async def test_ensure_active_accepts_token_that_is_not_revoked(
     Then: проверка проходит без ошибки.
     """
     # Дано
-    ensure_token_active = EnsureTokenActive(blacklisted_tokens_repository)
+    ensure_token_active = EnsureTokenActive(
+        blacklisted_tokens_repository, revoked_sessions_repository
+    )
     claims = _claims(expires_at=_expires_in(TTL_SECONDS))
 
     # Когда / Тогда
@@ -110,6 +117,7 @@ async def test_ensure_active_accepts_token_that_is_not_revoked(
 
 async def test_ensure_active_rejects_revoked_token(
     blacklisted_tokens_repository: RedisRevokedTokensRepository,
+    revoked_sessions_repository: RedisRevokedSessionsRepository,
 ) -> None:
     """Проверка отозванного токена.
 
@@ -119,7 +127,9 @@ async def test_ensure_active_rejects_revoked_token(
     """
     # Дано
     revoke_token = RevokeToken(blacklisted_tokens_repository)
-    ensure_token_active = EnsureTokenActive(blacklisted_tokens_repository)
+    ensure_token_active = EnsureTokenActive(
+        blacklisted_tokens_repository, revoked_sessions_repository
+    )
     claims = _claims(expires_at=_expires_in(TTL_SECONDS))
     await revoke_token(claims)
 
@@ -129,7 +139,7 @@ async def test_ensure_active_rejects_revoked_token(
 
 
 async def test_revoke_session_stores_session_until_it_expires(
-    blacklisted_tokens_repository: RedisRevokedTokensRepository,
+    revoked_sessions_repository: RedisRevokedSessionsRepository,
     session_repository: RedisSessionRepository,
     redis_double: InMemoryRedis,
 ) -> None:
@@ -140,7 +150,7 @@ async def test_revoke_session_stores_session_until_it_expires(
     Then: в Redis появляется запись по `sid` с TTL, не превышающим срок жизни токена.
     """
     # Дано
-    revoke_session = RevokeSession(blacklisted_tokens_repository, session_repository)
+    revoke_session = RevokeSession(revoked_sessions_repository, session_repository)
     claims = _claims(expires_at=_expires_in(TTL_SECONDS))
 
     # Когда
@@ -153,7 +163,7 @@ async def test_revoke_session_stores_session_until_it_expires(
 
 
 async def test_revoke_session_does_not_store_expired_session(
-    blacklisted_tokens_repository: RedisRevokedTokensRepository,
+    revoked_sessions_repository: RedisRevokedSessionsRepository,
     session_repository: RedisSessionRepository,
     redis_double: InMemoryRedis,
 ) -> None:
@@ -164,7 +174,7 @@ async def test_revoke_session_does_not_store_expired_session(
     Then: запись не создаётся: проверять отзыв истёкшей сессии бессмысленно.
     """
     # Дано
-    revoke_session = RevokeSession(blacklisted_tokens_repository, session_repository)
+    revoke_session = RevokeSession(revoked_sessions_repository, session_repository)
     claims = _claims(expires_at=_expires_in(-TTL_SECONDS))
 
     # Когда
@@ -176,6 +186,7 @@ async def test_revoke_session_does_not_store_expired_session(
 
 async def test_ensure_active_rejects_revoked_session(
     blacklisted_tokens_repository: RedisRevokedTokensRepository,
+    revoked_sessions_repository: RedisRevokedSessionsRepository,
     session_repository: RedisSessionRepository,
 ) -> None:
     """Проверка токена отозванной сессии.
@@ -185,8 +196,10 @@ async def test_ensure_active_rejects_revoked_session(
     Then: сервис сообщает, что токен отозван.
     """
     # Дано
-    revoke_session = RevokeSession(blacklisted_tokens_repository, session_repository)
-    ensure_token_active = EnsureTokenActive(blacklisted_tokens_repository)
+    revoke_session = RevokeSession(revoked_sessions_repository, session_repository)
+    ensure_token_active = EnsureTokenActive(
+        blacklisted_tokens_repository, revoked_sessions_repository
+    )
     claims = _claims(expires_at=_expires_in(TTL_SECONDS))
     await revoke_session(claims)
 

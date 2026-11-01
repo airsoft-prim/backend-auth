@@ -13,6 +13,7 @@ import pytest
 
 from src.adapters.cache.repositories import (
     RedisPublicJwkRepository,
+    RedisRevokedSessionsRepository,
     RedisRevokedTokensRepository,
     RedisSessionRepository,
 )
@@ -45,6 +46,7 @@ __all__ = [
     "password_hash",
     "private_jwk_repository",
     "redis_double",
+    "revoked_sessions_repository",
     "rotate_jwk",
     "session_repository",
     "sign_refresh_token",
@@ -126,6 +128,19 @@ def blacklisted_tokens_repository(redis_double: InMemoryRedis) -> RedisRevokedTo
         RedisRevokedTokensRepository: Репозиторий отозванных токенов.
     """
     return RedisRevokedTokensRepository(as_redis(redis_double))
+
+
+@pytest.fixture
+def revoked_sessions_repository(redis_double: InMemoryRedis) -> RedisRevokedSessionsRepository:
+    """Отдаёт репозиторий отозванных сессий поверх подмены Redis.
+
+    Args:
+        redis_double (InMemoryRedis): Подмена Redis.
+
+    Returns:
+        RedisRevokedSessionsRepository: Репозиторий отозванных сессий.
+    """
+    return RedisRevokedSessionsRepository(as_redis(redis_double))
 
 
 @pytest.fixture

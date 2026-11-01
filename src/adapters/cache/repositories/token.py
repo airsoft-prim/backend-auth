@@ -5,11 +5,12 @@ from src.domain.enums import TokenType
 from ._base import RedisRepository
 
 
+# TODO: перерабатывается — в сессионной модели инвалидация идёт через сессию, а не по
+# отдельному токену; отзыв по `jti` пока остаётся только для ротации refresh-токена.
 class RedisRevokedTokensRepository(RedisRepository):
     """Репозиторий отозванных токенов в Redis."""
 
     _key_template = Template("token:$type:revoked:$jti")
-    _session_key_template = Template("session:revoked:$sid")
 
     async def store(self, token_type: TokenType, token_id: str, ttl: int) -> None:
         """Помечает токен отозванным до истечения его срока действия.
@@ -43,36 +44,4 @@ class RedisRevokedTokensRepository(RedisRepository):
         key = self.compile_template({"type": token_type.value, "jti": token_id})
 
         with self._as_repository_error("Revoked token getting error."):
-            return bool(await self.client.exists(key))
-
-    async def store_session(self, sid: str, ttl: int) -> None:
-        """Помечает сессию отозванной до истечения её срока действия.
-
-        Args:
-            sid (str): Идентификатор сессии.
-            ttl (int): Оставшееся время жизни сессии в секундах.
-
-        Raises:
-            RepositoryError: Если обращение к Redis завершилось ошибкой.
-        """
-        key = self._session_key_template.substitute(sid=sid)
-
-        with self._as_repository_error("Revoked session saving error."):
-            await self.client.set(key, "1", ex=ttl)
-
-    async def check_session(self, sid: str) -> bool:
-        """Проверяет, отозвана ли сессия.
-
-        Args:
-            sid (str): Идентификатор сессии.
-
-        Raises:
-            RepositoryError: Если обращение к Redis завершилось ошибкой.
-
-        Returns:
-            bool: True, если сессия помечена отозванной.
-        """
-        key = self._session_key_template.substitute(sid=sid)
-
-        with self._as_repository_error("Revoked session getting error."):
             return bool(await self.client.exists(key))

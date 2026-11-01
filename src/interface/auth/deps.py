@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.adapters.cache import StorageNumber, get_bounded_client
 from src.adapters.cache.repositories import (
     RedisPublicJwkRepository,
+    RedisRevokedSessionsRepository,
     RedisRevokedTokensRepository,
     RedisSessionRepository,
 )
@@ -181,12 +182,15 @@ async def get_ensure_token_active(
     """Предоставляет use case проверки отзыва токена на время запроса.
 
     Args:
-        client (Redis): Клиент Redis с отозванными токенами.
+        client (Redis): Клиент Redis с отозванными токенами и сессиями.
 
     Returns:
         EnsureTokenActive: Use case проверки, что токен не отозван.
     """
-    return EnsureTokenActive(RedisRevokedTokensRepository(client))
+    return EnsureTokenActive(
+        RedisRevokedTokensRepository(client),
+        RedisRevokedSessionsRepository(client),
+    )
 
 
 async def get_revoke_session(
@@ -196,14 +200,14 @@ async def get_revoke_session(
     """Предоставляет use case отзыва сессии на время запроса.
 
     Args:
-        tokens_client (Redis): Клиент Redis с отозванными сессиями и токенами.
+        tokens_client (Redis): Клиент Redis с отозванными сессиями.
         sessions_client (Redis): Клиент Redis с сессиями пользователей.
 
     Returns:
         RevokeSession: Use case отзыва сессии.
     """
     return RevokeSession(
-        RedisRevokedTokensRepository(tokens_client),
+        RedisRevokedSessionsRepository(tokens_client),
         RedisSessionRepository(sessions_client),
     )
 

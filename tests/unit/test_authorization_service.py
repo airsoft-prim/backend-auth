@@ -3,7 +3,10 @@
 import jwt
 import pytest
 
-from src.adapters.cache.repositories import RedisRevokedTokensRepository
+from src.adapters.cache.repositories import (
+    RedisRevokedSessionsRepository,
+    RedisRevokedTokensRepository,
+)
 from src.application import (
     Authorize,
     EnsureTokenActive,
@@ -24,6 +27,7 @@ TTL_SECONDS = 3600
 def authorize(
     verify_token: VerifyToken,
     blacklisted_tokens_repository: RedisRevokedTokensRepository,
+    revoked_sessions_repository: RedisRevokedSessionsRepository,
 ) -> Authorize:
     """Отдаёт use case авторизации поверх подмены Redis.
 
@@ -31,11 +35,13 @@ def authorize(
         verify_token (VerifyToken): Use case проверки токенов.
         blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий
             отозванных токенов поверх подмены Redis.
+        revoked_sessions_repository (RedisRevokedSessionsRepository): Репозиторий
+            отозванных сессий поверх подмены Redis.
 
     Returns:
         Authorize: Use case авторизации запроса.
     """
-    ensure_active = EnsureTokenActive(blacklisted_tokens_repository)
+    ensure_active = EnsureTokenActive(blacklisted_tokens_repository, revoked_sessions_repository)
     return Authorize(verify_token, ensure_active)
 
 

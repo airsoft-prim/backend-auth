@@ -6,7 +6,10 @@ from fastapi import FastAPI, status
 import jwt
 import pytest
 
-from src.adapters.cache.repositories import RedisRevokedTokensRepository
+from src.adapters.cache.repositories import (
+    RedisRevokedSessionsRepository,
+    RedisRevokedTokensRepository,
+)
 from src.application import EnsureTokenActive, SignToken, VerifyToken
 from src.application.auth import GetUser
 from src.application.jwk import RotateJwk
@@ -47,6 +50,7 @@ def me_client(
     user_repository: InMemoryUserRepository,
     verify_token: VerifyToken,
     blacklisted_tokens_repository: RedisRevokedTokensRepository,
+    revoked_sessions_repository: RedisRevokedSessionsRepository,
 ) -> ASGIClient:
     """Отдаёт клиент профиля с подменами БД, проверки токена и хранилища отзыва.
 
@@ -57,6 +61,8 @@ def me_client(
             подмены Redis с опубликованными JWK.
         blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий
             отозванных токенов поверх подмены Redis.
+        revoked_sessions_repository (RedisRevokedSessionsRepository): Репозиторий
+            отозванных сессий поверх подмены Redis.
 
     Returns:
         ASGIClient: Клиент маршрута профиля.
@@ -64,7 +70,7 @@ def me_client(
     api_app.dependency_overrides[get_user] = lambda: GetUser(as_user_repository(user_repository))
     api_app.dependency_overrides[get_verify_access_token] = lambda: verify_token
     api_app.dependency_overrides[get_ensure_token_active] = lambda: EnsureTokenActive(
-        blacklisted_tokens_repository
+        blacklisted_tokens_repository, revoked_sessions_repository
     )
 
     return ASGIClient(api_app)

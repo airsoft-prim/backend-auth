@@ -20,6 +20,7 @@ from src.domain.errors import (
 from src.domain.ports import (
     PrivateJwkRepository,
     PublicJwkRepository,
+    RevokedSessionsRepository,
     RevokedTokensRepository,
     SessionRepository,
 )
@@ -226,13 +227,17 @@ class VerifyToken[ClaimsT](AbstractUseCase):
 class EnsureTokenActive(AbstractUseCase):
     """Use case проверки, что токен не отозван."""
 
-    def __init__(self, tokens: RevokedTokensRepository) -> None:
+    def __init__(
+        self, tokens: RevokedTokensRepository, sessions: RevokedSessionsRepository
+    ) -> None:
         """Инициализация класса.
 
         Args:
             tokens (RevokedTokensRepository): Порт доступа к отозванным токенам.
+            sessions (RevokedSessionsRepository): Порт доступа к отозванным сессиям.
         """
         self._tokens = tokens
+        self._sessions = sessions
 
     async def __call__(self, claims: TokenClaims, token_type: TokenType = TokenType.ACCESS) -> None:
         """Проверяет, что токен не отозван.
@@ -246,7 +251,7 @@ class EnsureTokenActive(AbstractUseCase):
         Raises:
             TokenRevokedError: Токен уже помечен отозванным.
         """
-        if await self._tokens.check_session(claims["sid"]):
+        if await self._sessions.check(claims["sid"]):
             msg = "Token is revoked."
             raise TokenRevokedError(msg) from None
 
@@ -308,14 +313,14 @@ class RotateRefreshToken(AbstractUseCase):
 class RevokeSession(AbstractUseCase):
     """Use case отзыва сессии по её идентификатору."""
 
-    def __init__(self, tokens: RevokedTokensRepository, sessions: SessionRepository) -> None:
+    def __init__(self, revoked: RevokedSessionsRepository, sessions: SessionRepository) -> None:
         """Инициализация класса.
 
         Args:
-            tokens (RevokedTokensRepository): Порт доступа к отозванным сессиям.
+            revoked (RevokedSessionsRepository): Порт доступа к отозванным сессиям.
             sessions (SessionRepository): Порт доступа к сессиям пользователей.
         """
-        self._tokens = tokens
+        self._revoked = revoked
         self._sessions = sessions
 
     async def __call__(self, claims: TokenClaims) -> None:
@@ -330,7 +335,7 @@ class RevokeSession(AbstractUseCase):
         if (ttl := claims["exp"] - int(datetime.now(UTC).timestamp())) <= 0:
             return
 
-        await self._tokens.store_session(claims["sid"], ttl)
+        await self._revoked.store(claims["sid"], ttl)
 
         session = await self._sessions.get(claims["sid"])
         if session is not None and session.revoked_at is None:

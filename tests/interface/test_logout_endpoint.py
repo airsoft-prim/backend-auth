@@ -3,7 +3,11 @@
 from fastapi import FastAPI, status
 import pytest
 
-from src.adapters.cache.repositories import RedisRevokedTokensRepository, RedisSessionRepository
+from src.adapters.cache.repositories import (
+    RedisRevokedSessionsRepository,
+    RedisRevokedTokensRepository,
+    RedisSessionRepository,
+)
 from src.adapters.filesystem.repositories import FilePrivateJwkRepository
 from src.application import EnsureTokenActive, RevokeSession, SignToken, VerifyToken
 from src.application.jwk import RotateJwk
@@ -28,6 +32,7 @@ def logout_client(
     api_app: FastAPI,
     verify_refresh_token: VerifyToken[RefreshTokenClaims],
     blacklisted_tokens_repository: RedisRevokedTokensRepository,
+    revoked_sessions_repository: RedisRevokedSessionsRepository,
     session_repository: RedisSessionRepository,
 ) -> ASGIClient:
     """Отдаёт клиент выхода с подменой проверки refresh-токена и хранилища отзыва.
@@ -38,16 +43,19 @@ def logout_client(
             refresh-токенов поверх подмены Redis с опубликованными JWK.
         blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий
             отозванных токенов поверх подмены Redis.
+        revoked_sessions_repository (RedisRevokedSessionsRepository): Репозиторий
+            отозванных сессий поверх подмены Redis.
+        session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены Redis.
 
     Returns:
         ASGIClient: Клиент маршрута выхода.
     """
     api_app.dependency_overrides[get_verify_refresh_token] = lambda: verify_refresh_token
     api_app.dependency_overrides[get_ensure_token_active] = lambda: EnsureTokenActive(
-        blacklisted_tokens_repository
+        blacklisted_tokens_repository, revoked_sessions_repository
     )
     api_app.dependency_overrides[get_revoke_session] = lambda: RevokeSession(
-        blacklisted_tokens_repository, session_repository
+        revoked_sessions_repository, session_repository
     )
 
     return ASGIClient(api_app)

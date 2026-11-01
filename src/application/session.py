@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from src.domain.entities import Session
 from src.domain.errors import SessionNotFoundError
-from src.domain.ports import RevokedTokensRepository, SessionRepository
+from src.domain.ports import RevokedSessionsRepository, SessionRepository
 
 from ._base import AbstractUseCase
 
@@ -161,14 +161,14 @@ class ListSessions(AbstractUseCase):
 class CloseSession(AbstractUseCase):
     """Use case закрытия одной сессии пользователя."""
 
-    def __init__(self, tokens: RevokedTokensRepository, sessions: SessionRepository) -> None:
+    def __init__(self, revoked: RevokedSessionsRepository, sessions: SessionRepository) -> None:
         """Инициализация класса.
 
         Args:
-            tokens (RevokedTokensRepository): Порт доступа к отозванным сессиям.
+            revoked (RevokedSessionsRepository): Порт доступа к отозванным сессиям.
             sessions (SessionRepository): Порт доступа к сессиям пользователей.
         """
-        self._tokens = tokens
+        self._revoked = revoked
         self._sessions = sessions
 
     async def __call__(self, user_id: int, sid: str) -> None:
@@ -192,7 +192,7 @@ class CloseSession(AbstractUseCase):
 
         now = datetime.now(UTC)
         if (ttl := int((session.expires_at - now).total_seconds())) > 0:
-            await self._tokens.store_session(sid, ttl)
+            await self._revoked.store(sid, ttl)
 
         session.revoked_at = now
         await self._sessions.save(session)

@@ -147,10 +147,11 @@ access-токен для этого не используется.
   токен приватным ключом из keyfile, второй выбирает публичный ключ по `kid` и проверяет подпись, `iss`,
   `aud`, срок действия, тип токена и наличие обязательных claims.
 - **Отзыв** — `✅`: `RedisRevokedTokensRepository` хранит отозванные токены по ключу
-  `token:<access|refresh>:revoked:<jti>` и отозванные сессии по ключу `session:revoked:<sid>` с TTL, равным
-  остатку срока жизни. `/auth/logout` отзывает сессию, а ротация в `/auth/refresh` — прежний refresh-токен.
-  Проверка токена (`EnsureTokenActive`) сначала сверяется с отозванной сессией (`sid`), затем — с `jti`
-  самого токена. Блокировка и смена пароля пока выданные токены не отзывают (§9).
+  `token:<access|refresh>:revoked:<jti>`, а `RedisRevokedSessionsRepository` — отозванные сессии по ключу
+  `session:revoked:<sid>`; TTL записи равен остатку срока жизни. `/auth/logout` отзывает сессию, а ротация
+  в `/auth/refresh` — прежний refresh-токен. Проверка токена (`EnsureTokenActive`) сначала сверяется с
+  отозванной сессией (`sid`), затем — с `jti` самого токена. Блокировка и смена пароля пока выданные
+  токены не отзывают (§9).
 
 ### 4.3. Ключи подписи
 
@@ -176,9 +177,10 @@ access-токен для этого не используется.
 **записи об активных сбросах пароля** `🚧` — запись «об активном сбросе» для адреса и запись по токену
 из письма (хранится хеш токена). TTL записей и переход к антибрутфорсу — `⬜`. Счётчики попыток входа —
 `⬜`. **Отозванные токены и сессии** — `✅`: `RedisRevokedTokensRepository` хранит ключ
-`token:<access|refresh>:revoked:<jti>` и `session:revoked:<sid>` с TTL, равным остатку срока жизни,
-поэтому запись исчезает сама, когда токен или сессия всё равно истекли бы. `/auth/logout` отзывает
-сессию, а проверка Bearer отклоняет токен отозванной сессии или отозванный токен.
+`token:<access|refresh>:revoked:<jti>`, а `RedisRevokedSessionsRepository` — `session:revoked:<sid>`; TTL
+записи равен остатку срока жизни, поэтому запись исчезает сама, когда токен или сессия всё равно истекли
+бы. `/auth/logout` отзывает сессию, а проверка Bearer отклоняет токен отозванной сессии или отозванный
+токен.
 Провайдер клиента реализован (`src/infrastructure/cache/client.py`) и подключён к JWKS-эндпоинту: публичные
 ключи он читает из отдельной БД `StorageNumber.KEYS`.
 
@@ -198,7 +200,8 @@ access-токен для этого не используется.
 | Alembic: настроен, миграций с таблицами ещё нет (каталог `migrations/versions/` пуст)                             | `🚧`                                                                       |
 | Подключение к Redis (клиент на время запроса)                                                                     | `✅`                                                                       |
 | Базовые репозитории БД и Redis (`src/infrastructure/{database,cache}/repositories/`)                              | `✅` `get`, `save`, `delete` и шаблон ключа                                |
-| Репозиторий отозванных токенов и сессий (`RedisRevokedTokensRepository`)                                          | `✅` `token:<access\|refresh>:revoked:<jti>`, `session:revoked:<sid>`      |
+| Репозиторий отозванных токенов (`RedisRevokedTokensRepository`)                                                   | `✅` `token:<access\|refresh>:revoked:<jti>`                               |
+| Репозиторий отозванных сессий (`RedisRevokedSessionsRepository`)                                                  | `✅` `session:revoked:<sid>`                                               |
 | Репозиторий сессий (`RedisSessionRepository`)                                                                     | `✅` `session:<sid>`, индекс `session:user:<user_id>`                      |
 | `JWKS`-эндпоинт                                                                                                   | `✅` отдаёт публичные JWK из кеша Redis                                    |
 | Сервисы JWK (`CollectJwks`, `RotateJwk`)                                                                          | `✅` сбор и ротация JWK                                                    |

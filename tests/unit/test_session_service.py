@@ -4,7 +4,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from src.adapters.cache.repositories import RedisRevokedTokensRepository, RedisSessionRepository
+from src.adapters.cache.repositories import (
+    RedisRevokedSessionsRepository,
+    RedisSessionRepository,
+)
 from src.application import CloseOtherSessions, CloseSession, CreateSession, ListSessions
 from src.application.session import parse_user_agent
 from src.domain.entities import Session
@@ -170,7 +173,7 @@ async def test_list_sessions_returns_active_sorted_newest_first(
 
 
 async def test_close_session_revokes_owned_session(
-    blacklisted_tokens_repository: RedisRevokedTokensRepository,
+    revoked_sessions_repository: RedisRevokedSessionsRepository,
     session_repository: RedisSessionRepository,
     redis_double: InMemoryRedis,
 ) -> None:
@@ -185,7 +188,7 @@ async def test_close_session_revokes_owned_session(
     session = await create_session(USER_ID)
 
     # Когда
-    await CloseSession(blacklisted_tokens_repository, session_repository)(USER_ID, session.id)
+    await CloseSession(revoked_sessions_repository, session_repository)(USER_ID, session.id)
 
     # Тогда
     key = f"session:revoked:{session.id}"
@@ -198,7 +201,7 @@ async def test_close_session_revokes_owned_session(
 
 
 async def test_close_session_is_idempotent(
-    blacklisted_tokens_repository: RedisRevokedTokensRepository,
+    revoked_sessions_repository: RedisRevokedSessionsRepository,
     session_repository: RedisSessionRepository,
 ) -> None:
     """Повторное закрытие сессии не поднимает ошибку.
@@ -210,7 +213,7 @@ async def test_close_session_is_idempotent(
     # Дано
     create_session = CreateSession(session_repository, TTL_SECONDS, max_active=5)
     session = await create_session(USER_ID)
-    close_session = CloseSession(blacklisted_tokens_repository, session_repository)
+    close_session = CloseSession(revoked_sessions_repository, session_repository)
     await close_session(USER_ID, session.id)
 
     # Когда / Тогда
@@ -218,7 +221,7 @@ async def test_close_session_is_idempotent(
 
 
 async def test_close_session_raises_for_foreign_session(
-    blacklisted_tokens_repository: RedisRevokedTokensRepository,
+    revoked_sessions_repository: RedisRevokedSessionsRepository,
     session_repository: RedisSessionRepository,
 ) -> None:
     """Закрытие чужой сессии отклоняется.
@@ -237,7 +240,7 @@ async def test_close_session_raises_for_foreign_session(
     )
     await session_repository.save(foreign)
 
-    close_session = CloseSession(blacklisted_tokens_repository, session_repository)
+    close_session = CloseSession(revoked_sessions_repository, session_repository)
 
     # Когда / Тогда
     with pytest.raises(SessionNotFoundError, match="Session not found"):
@@ -245,7 +248,7 @@ async def test_close_session_raises_for_foreign_session(
 
 
 async def test_close_session_raises_for_unknown_session(
-    blacklisted_tokens_repository: RedisRevokedTokensRepository,
+    revoked_sessions_repository: RedisRevokedSessionsRepository,
     session_repository: RedisSessionRepository,
 ) -> None:
     """Закрытие несуществующей сессии отклоняется.
@@ -255,13 +258,13 @@ async def test_close_session_raises_for_unknown_session(
     Then: он сообщает, что сессия не найдена.
     """
     # Когда / Тогда
-    close_session = CloseSession(blacklisted_tokens_repository, session_repository)
+    close_session = CloseSession(revoked_sessions_repository, session_repository)
     with pytest.raises(SessionNotFoundError, match="Session not found"):
         await close_session(USER_ID, "missing-session")
 
 
 async def test_close_other_sessions_keeps_current(
-    blacklisted_tokens_repository: RedisRevokedTokensRepository,
+    revoked_sessions_repository: RedisRevokedSessionsRepository,
     session_repository: RedisSessionRepository,
 ) -> None:
     """Закрытие всех сессий, кроме текущей.
@@ -287,7 +290,7 @@ async def test_close_other_sessions_keeps_current(
     await session_repository.save(current)
     await session_repository.save(other)
 
-    close_session = CloseSession(blacklisted_tokens_repository, session_repository)
+    close_session = CloseSession(revoked_sessions_repository, session_repository)
     close_others = CloseOtherSessions(session_repository, close_session)
 
     # Когда
