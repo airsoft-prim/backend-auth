@@ -17,3 +17,8 @@ class SecurityConfiguration(BaseSettings):
     ACCESS_TOKEN_TTL: int = Field(default=int(timedelta(minutes=5).total_seconds()), gt=0)
     REFRESH_TOKEN_TTL: int = Field(default=int(timedelta(days=30).total_seconds()), gt=0)
     MAX_ACTIVE_SESSIONS: int = Field(default=5, gt=0)
+
+    REQUEST_RATE_LIMIT: int = Field(
+        default=60, gt=0, validation_alias="SUCURITY_REQUEST_RATE_LIMIT"
+    )
+    REQUEST_RATE_WINDOW: int = Field(default=60, gt=0)
