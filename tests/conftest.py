@@ -34,28 +34,6 @@ from src.interface.well_known.deps import get_collect_jwks
 from tests.asgi_client import ASGIClient
 from tests.doubles import InMemoryRedis, as_redis
 
-__all__ = [
-    "api_app",
-    "api_client",
-    "blacklisted_tokens_repository",
-    "collect_jwks",
-    "file_system",
-    "jwk_repository",
-    "jwks_client",
-    "key_store_dir",
-    "password_hash",
-    "private_jwk_repository",
-    "redis_double",
-    "revoked_sessions_repository",
-    "rotate_jwk",
-    "session_repository",
-    "sign_refresh_token",
-    "sign_token",
-    "unavailable_repository",
-    "verify_refresh_token",
-    "verify_token",
-]
-
 
 @pytest.fixture
 def api_app() -> Iterator[FastAPI]:
