@@ -19,7 +19,14 @@ Order processing service.
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
-    """Application lifespan."""
+    """Start and stop the background worker.
+
+    Args:
+        _ (FastAPI): Application supplied by the framework; unused.
+
+    Yields:
+        None: Control while the application serves requests.
+    """
     logger.info("Application starting up...")
 
     worker = build_worker()
@@ -28,10 +35,11 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
 
     logger.success("Application started.")
 
-    yield
-
-    logger.warning("Application is shutting down.")
-    await worker.stop()
+    try:
+        yield
+    finally:
+        logger.warning("Application is shutting down.")
+        await worker.stop()
 
 
 application = FastAPI(
@@ -54,29 +62,19 @@ from myapp import application
 # Development: an import string, which is what makes reload possible.
 uvicorn.run("myapp:application", host="localhost", port=8000, reload=True)
 
-# Production: the imported object itself.
+# Single-process production without reload: an app object is also supported.
 uvicorn.run(application, host="localhost", port=8000)
 ```
 
-## Notice
+## Ownership and configuration
 
-- `lifespan(_: FastAPI)`: the application argument is unnamed unless the lifespan genuinely reads
-  it, and the yield type is `None`. The annotation stays generic because the body yields nothing.
-- The lifespan replaces the deprecated `@app.on_event("startup")` / `("shutdown")` pair: one place
-  shows everything that happens around the application's life.
-- Startup starts long-running background work; the code after `yield` stops exactly that work and
-  nothing else. A `try/finally` around the `yield` is the form to use when teardown must survive
-  cancellation or a failed startup.
-- Pools, engines and clients that live for the process are created once, when their module is
-  imported — not on every request and not inside the lifespan's startup body, where they would be
-  invisible to anything that imports the app.
-- The lifespan runs once per process. With several uvicorn workers, every worker runs its own copy,
-  so a "single global" started here is really one per worker.
-- Phase boundaries are logged and named: `info` when a phase starts, `success` when a step finished,
-  `warning` before shutdown. Messages are English.
-- The application object stays `title`, `description`, `version`, `lifespan` and its routers.
-  FastAPI's own defaults stay in place: `/docs`, `/redoc` and `/openapi.json` are served, no
-  `tags_metadata`, no custom docs URLs, no middleware stack and no exception handlers unless
-  something needs them.
-- Only the reload case needs an import string: `reload=True` re-imports the module, and an
-  already-constructed app object cannot be re-imported.
+The lifespan runs per worker. Stop work it owns and protect teardown with
+`try/finally` when exceptions can cross `yield`. Resources acquired during startup
+need cleanup protection if a later startup step fails.
+
+Reuse project resource factories and the composition root. This example does not
+require import-time network connections or moving every pool into the same place.
+Preserve existing docs URL configuration, middleware, and exception handlers.
+
+Use import strings for reload and multi-worker launches. The app-object form
+above is an alternative for single-process serving without reload.

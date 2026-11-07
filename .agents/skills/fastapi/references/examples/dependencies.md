@@ -60,8 +60,7 @@ async def get_order_service(
 ```
 
 No `yield` here: nothing stays open after the function returns, and FastAPI resolves the nested
-dependency for you. A dependency used twice inside one request is resolved once and its result
-reused.
+dependency for you. Repeated uses normally share the request-cached result; use_cache=False opts out.
 
 ## A dependency that owns a connection
 
@@ -77,14 +76,15 @@ async def get_session() -> AsyncGenerator[AsyncSession]:
     """Provides a database session for the duration of the request.
 
     Yields:
-        AsyncGenerator[AsyncSession]: Session closed when the request is done.
+        AsyncSession: Session owned by the dependency context.
     """
     async with async_session() as session:
         yield session
 ```
 
-Everything after the `yield` is cleanup: it runs when the response is on its way out, including
-when the handler raised. Code before the `yield` runs before the handler does.
+Acquire before `yield` and release through a context manager or `try/finally`.
+Cleanup timing depends on dependency scope; it is not always the same point in
+response delivery.
 
 ## A dependency whose target must be named
 
@@ -126,39 +126,43 @@ sit. `Client` and `client_factory` stand for the project's own storage client.
 ## Substituting a dependency in a test
 
 ```python
-import pytest
+from collections.abc import Iterator
+
 from fastapi import FastAPI
+import pytest
 
 from tests.asgi_client import ASGIClient
-
-application.dependency_overrides[get_order_service] = lambda: OrderService(
-    order_repository=in_memory_repository
-)
 
 
 @pytest.fixture
 def api_client(application: FastAPI) -> Iterator[ASGIClient]:
-    """Provides a client over the application and clears overrides afterwards.
+    """Provide a client with an isolated service override.
+
+    Args:
+        application (FastAPI): Application under test.
 
     Yields:
-        Iterator[ASGIClient]: Client bound to the application under test.
+        ASGIClient: Client using the test repository.
     """
-    yield ASGIClient(application)
-    application.dependency_overrides.clear()
+    previous_overrides = application.dependency_overrides.copy()
+    application.dependency_overrides[get_order_service] = lambda: OrderService(
+        order_repository=in_memory_repository,
+    )
+    try:
+        yield ASGIClient(application)
+    finally:
+        application.dependency_overrides.clear()
+        application.dependency_overrides.update(previous_overrides)
 ```
 
-## Notice
+The application and repository come from fixtures. Reuse the existing client;
+manage its lifecycle if it owns resources. For dependencies returned by factories,
+retain the exact callable used in `Depends` when tests need to override it:
 
-- Dependencies are declared with `Annotated[T, Depends(...)]` and never called by hand inside a
-  handler: calling them would open a second connection and skip the override.
-- A dependency returns one object. Tuples and dicts of several values turn the signature into a
-  puzzle; split them into two dependencies instead.
-- Dependency callables stay module-level and importable. `dependency_overrides` matches them by
-  identity, so a factory closure created inside a route module cannot be substituted.
-- Overrides are cleared in teardown: a leaked override silently changes every test that runs after.
-- `app.state` is not a dependency registry for request-scoped objects: a dependency either builds a
-  cheap object or yields a scoped resource, and the request end closes it.
-- A settings object is not injected per route: one cached instance is shared, so no request pays for
-  re-reading configuration.
-- Only the dependency function knows the concrete client type; the endpoint sees the type it
-  declares, which is what makes it swappable in tests.
+```python
+reports_client_dependency = get_client(Shard.REPORTS)
+```
+
+Override that callable, not a new factory result: a fresh closure has a different
+identity. Keep providers importable and let FastAPI resolve them. Reuse cached
+settings; do not use `app.state` to register request-scoped objects.

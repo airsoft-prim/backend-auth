@@ -5,16 +5,18 @@
 In the schemas module:
 
 ```python
-from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, SecretStr
+from pydantic import AfterValidator, AwareDatetime, BaseModel, ConfigDict, Field, SecretStr
 
 
 class OrderStatus(StrEnum):
-    """Status of an order."""
+    """Status of an order.
+
+    Defines the supported states used by order response models.
+    """
 
     DRAFT = "draft"
     CONFIRMED = "confirmed"
@@ -50,14 +52,20 @@ does not copy the message.
 
 ```python
 class OrderLineRequestBody(BaseModel):
-    """A single line of an order."""
+    """A single line of an order.
+
+    Identifies an item and validates its requested reservation quantity.
+    """
 
     item_id: int = Field(description="Identifier of the item.", examples=[17])
     quantity: int = Field(gt=0, description="Number of items to reserve.", examples=[2])
 
 
 class CreateOrderRequestBody(BaseModel):
-    """Request body of an order creation."""
+    """Request body of an order creation.
+
+    Collects customer details, a payment token, and validated order lines.
+    """
 
     customer_id: int = Field(description="Identifier of the customer.", examples=[42])
     note: str | None = Field(default=None, description="Free-form note for the order.")
@@ -66,31 +74,40 @@ class CreateOrderRequestBody(BaseModel):
 
 
 class Order(BaseModel):
-    """Stored order returned to its owner."""
+    """Stored order returned to its owner.
+
+    Serializes order attributes and validates the total and creation timestamp.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
     id: int = Field(description="Identifier of the order.", examples=[1024])
     status: OrderStatus = Field(description="Current status of the order.")
     total: Amount = Field(description="Total amount of the order.")
-    created_at: datetime = Field(description="Moment the order was created.")
+    created_at: AwareDatetime = Field(description="Moment the order was created.")
 ```
 
 ## A polymorphic payload
 
 ```python
 class CardPayment(BaseModel):
-    """Payment with a stored card."""
+    """Payment with a stored card.
 
-    kind: Literal["card"]
-    token: SecretStr
+    Selects the card alternative and carries its secret payment token.
+    """
+
+    kind: Literal["card"] = Field(description="Card payment discriminator.")
+    token: SecretStr = Field(description="Secret card payment token.")
 
 
 class TransferPayment(BaseModel):
-    """Payment by transfer."""
+    """Payment by transfer.
 
-    kind: Literal["transfer"]
-    account: str
+    Selects the transfer alternative and identifies its destination account.
+    """
+
+    kind: Literal["transfer"] = Field(description="Transfer payment discriminator.")
+    account: str = Field(description="Destination account identifier.")
 
 
 type PaymentMethod = Annotated[CardPayment | TransferPayment, Field(discriminator="kind")]
@@ -103,7 +120,7 @@ type PaymentMethod = Annotated[CardPayment | TransferPayment, Field(discriminato
 - Constraints live on the field (`gt=0`) and policies live in validators; both are visible in the
   generated schema.
 - Secrets are `SecretStr`, closed vocabularies are shared enums, and timestamps are timezone-aware
-  (they parse into `datetime`).
+  (enforced here with `AwareDatetime`).
 - Bodies are named `<Action>RequestBody`; responses are named for what they mean (`Order`,
   `OrderList`), never for their direction (`OrderResponse`) or their JSON shape.
 - Models built from ORM objects set `ConfigDict(from_attributes=True)`; models that only travel over

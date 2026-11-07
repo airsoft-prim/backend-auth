@@ -88,6 +88,9 @@ async def refund_order(order_id: int, current_user: Any) -> None:
     Args:
         order_id (int): Identifier of the order to refund.
         current_user (Any): Owner of the token the request came with.
+
+    Raises:
+        NotImplementedError: The contract stub has no implementation.
     """
     raise NotImplementedError
 ```
@@ -95,8 +98,9 @@ async def refund_order(order_id: int, current_user: Any) -> None:
 ## Notice
 
 - The decorator is the contract you read first: method, path, spread docs. Nothing else is on it.
-- `response_model=` never appears. The return annotation is the model, FastAPI feeds it into the
-  OpenAPI document, and a `dict` return would silently drop it.
+- `response_model=` never appears. The return annotation is the model, FastAPI uses it for the
+  OpenAPI schema. Annotated dictionaries can produce schemas, but concrete models
+  express the project contract more precisely.
 - An endpoint with nothing to return is annotated `-> None` and takes its 204 from the docs
   constant; a non-JSON body is an explicit `PlainTextResponse` built in the handler.
 - Parameters are `Annotated`, markers included: `Annotated[int, Path(ge=1)]` both documents the

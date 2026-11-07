@@ -10,7 +10,10 @@ from typing import Any, TypedDict
 
 
 class RouteDocs(TypedDict, total=False):
-    """Shape of the documentation data attached to a path operation."""
+    """Shape of the documentation data attached to a path operation.
+
+    Types optional decorator metadata shared by route documentation constants.
+    """
 
     summary: str
     operation_id: str
@@ -62,11 +65,11 @@ CANCEL_ORDER_DOCS: RouteDocs = {
 
 ```python
 @router.post("", **CREATE_ORDER_DOCS)
-async def create_order(...) -> Order: ...
+async def create_order(body: CreateOrderRequestBody) -> Order: ...
 
 
 @router.get("/{order_id}", **GET_ORDER_DOCS)
-async def get_order(...) -> Order: ...
+async def get_order(order_id: int) -> Order: ...
 ```
 
 ## Notice
@@ -84,4 +87,4 @@ async def get_order(...) -> Order: ...
   module reads in the same order as the route module.
 - The dict is never written inline in the decorator and never repeats a schema: it is documentation,
   not a contract.
-- Human-facing text follows the language rule: the team's language, one language per module.
+- Human-facing text follows the language rule: the predominant project documentation language; logs and exception messages stay English.
