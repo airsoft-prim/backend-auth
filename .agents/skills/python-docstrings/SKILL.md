@@ -148,6 +148,29 @@ and implementation. Indent section entries consistently using Google Style.
 Describe parameter meaning, return semantics, and failure conditions directly;
 omit conversational lead-ins and explanations that merely repeat section labels.
 
+### Constructors
+
+Document `__init__` using the public-method rules for applicable `Args:` and
+`Raises:` sections, with these exceptions:
+
+- Always use the exact summary "Инициализация класса." regardless of the project's
+  predominant documentation language.
+- Do not add a detailed description between the summary and sections.
+- Omit `Returns:` because initialization has no meaningful return value.
+
+Use a one-line docstring when no sections apply; do not add padding lines.
+Parameter and exception descriptions follow the normal project-language rule.
+
+```python
+def __init__(self, a: int) -> None:
+    """Инициализация класса.
+
+    Args:
+        a (int): Аргумент А.
+    """
+    ...
+```
+
 ### Protected and private methods
 
 For protected (`_name`) and private (`__name`) methods, a summary alone is allowed.
