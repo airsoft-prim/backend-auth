@@ -11,3 +11,4 @@ class ApplicationConfiguration(BaseSettings):
     PROJECT: str = Field(default="Airsoft Prim")
 
     DEBUG: bool = Field(default=False)
+    DOCS: bool = Field(default=False)

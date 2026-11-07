@@ -39,6 +39,9 @@ application = FastAPI(
     title=f"{config.app.PROJECT} | {config.app.NAME}",
     description=APP_DESCRIPTION,
     version=__version__,
+    docs_url="/docs" if config.app.DOCS else None,
+    redoc_url="/redoc" if config.app.DOCS else None,
+    openapi_url="/openapi.json" if config.app.DOCS else None,
 )
 
 register_exception_handlers(application)

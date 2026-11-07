@@ -13,6 +13,9 @@ docker compose --profile dev up -d postgres redis
 uv run python main.py
 ```
 
+Документация `/docs`, `/redoc` и схема `/openapi.json` включаются переменной
+`APP_DOCS=true`. По умолчанию они отключены.
+
 Хуки запускайте через `uv run pre-commit run --all-files` от обычного пользователя.
 Не запускайте `uv` и `pre-commit` с повышенными правами: кэш `%LOCALAPPDATA%\uv` и
 `.venv` должны принадлежать вашему пользователю, иначе следующие запуски без
