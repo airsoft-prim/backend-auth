@@ -1,4 +1,4 @@
-"""Тесты репозитория публичных JWK в Redis."""
+"""Тесты репозитория публичных JWK в `Redis`."""
 
 import json
 
@@ -41,9 +41,13 @@ async def test_store_writes_jwk_json_under_key_with_kid(
 ) -> None:
     """Сохранение публичного ключа.
 
-    Given: репозиторий и публичный JWK,
-    When: ключ сохраняется,
-    Then: в Redis он лежит по ключу со своим `kid` в виде JSON.
+    Given: репозиторий и публичный JWK, When: ключ сохраняется, Then: в `Redis` он лежит по ключу
+    со своим `kid` в виде JSON.
+
+    Args:
+        jwk_repository (RedisPublicJwkRepository): Репозиторий публичных JWK поверх подмены
+            `Redis`.
+        redis_double (InMemoryRedis): Подмена `Redis` с хранилищем значений и TTL в памяти.
     """
     # Дано
     jwk = _jwk(KEY_ID)
@@ -59,9 +63,12 @@ async def test_store_writes_jwk_json_under_key_with_kid(
 async def test_acquire_returns_stored_jwk(jwk_repository: RedisPublicJwkRepository) -> None:
     """Чтение публичного ключа.
 
-    Given: публичный JWK сохранён,
-    When: ключ запрашивается по своему `kid`,
-    Then: возвращается тот же JWK.
+    Given: публичный JWK сохранён, When: ключ запрашивается по своему `kid`, Then: возвращается тот
+    же JWK.
+
+    Args:
+        jwk_repository (RedisPublicJwkRepository): Репозиторий публичных JWK поверх подмены
+            `Redis`.
     """
     # Дано
     jwk = _jwk(KEY_ID)
@@ -79,9 +86,12 @@ async def test_acquire_returns_none_for_unknown_key(
 ) -> None:
     """Чтение неопубликованного ключа.
 
-    Given: ключ с таким `kid` не публиковался,
-    When: ключ запрашивается,
-    Then: репозиторий сообщает об отсутствии значения, а не падает.
+    Given: ключ с таким `kid` не публиковался, When: ключ запрашивается, Then: репозиторий сообщает
+    об отсутствии значения, а не падает.
+
+    Args:
+        jwk_repository (RedisPublicJwkRepository): Репозиторий публичных JWK поверх подмены
+            `Redis`.
     """
     # Когда
     stored = await jwk_repository.acquire(KEY_ID)
@@ -95,9 +105,12 @@ async def test_acquire_all_returns_every_published_jwk(
 ) -> None:
     """Чтение всего набора публичных ключей.
 
-    Given: опубликованы два публичных JWK,
-    When: репозиторий отдаёт весь набор,
-    Then: в наборе оба ключа.
+    Given: опубликованы два публичных JWK, When: репозиторий отдаёт весь набор, Then: в наборе оба
+    ключа.
+
+    Args:
+        jwk_repository (RedisPublicJwkRepository): Репозиторий публичных JWK поверх подмены
+            `Redis`.
     """
     # Дано
     await jwk_repository.store(KEY_ID, _jwk(KEY_ID))
@@ -116,9 +129,14 @@ async def test_expire_rotated_sets_ttl_for_previous_keys_only(
 ) -> None:
     """Время жизни ключей прошлых ротаций.
 
-    Given: опубликованы два публичных JWK и один из них — только что созданный,
-    When: репозиторий ограничивает время жизни ключей прошлых ротаций,
-    Then: срок получает только прошлый ключ: новый ключ остаётся без ограничения.
+    Given: опубликованы два публичных JWK и один из них — только что созданный, When: репозиторий
+    ограничивает время жизни ключей прошлых ротаций, Then: срок получает только прошлый ключ: новый
+    ключ остаётся без ограничения.
+
+    Args:
+        jwk_repository (RedisPublicJwkRepository): Репозиторий публичных JWK поверх подмены
+            `Redis`.
+        redis_double (InMemoryRedis): Подмена `Redis` с хранилищем значений и TTL в памяти.
     """
     # Дано
     await jwk_repository.store(KEY_ID, _jwk(KEY_ID))
@@ -137,9 +155,14 @@ async def test_expire_rotated_keeps_ttl_of_already_rotated_keys(
 ) -> None:
     """Повторная ротация не продлевает срок ключей прошлых ротаций.
 
-    Given: прошлый ключ уже получил TTL на предыдущей ротации,
-    When: ротация ограничивает время жизни ключей ещё раз,
-    Then: срок уже ограниченного ключа не меняется, а TTL получает только ключ без срока.
+    Given: прошлый ключ уже получил TTL на предыдущей ротации, When: ротация ограничивает время
+    жизни ключей ещё раз, Then: срок уже ограниченного ключа не меняется, а TTL получает только
+    ключ без срока.
+
+    Args:
+        jwk_repository (RedisPublicJwkRepository): Репозиторий публичных JWK поверх подмены
+            `Redis`.
+        redis_double (InMemoryRedis): Подмена `Redis` с хранилищем значений и TTL в памяти.
     """
     # Дано
     await jwk_repository.store(KEY_ID, _jwk(KEY_ID))
@@ -160,11 +183,14 @@ async def test_expire_rotated_keeps_ttl_of_already_rotated_keys(
 def test_compile_template_fills_missing_kid_with_glob(
     jwk_repository: RedisPublicJwkRepository,
 ) -> None:
-    """Сборка ключа Redis из шаблона.
+    """Сборка ключа `Redis` из шаблона.
 
-    Given: шаблон ключа публичного JWK,
-    When: шаблон собирается с `kid` и без него,
-    Then: известный `kid` подставляется, а пропущенный превращается в glob-маску.
+    Given: шаблон ключа публичного JWK, When: шаблон собирается с `kid` и без него, Then: известный
+    `kid` подставляется, а пропущенный превращается в glob-маску.
+
+    Args:
+        jwk_repository (RedisPublicJwkRepository): Репозиторий публичных JWK поверх подмены
+            `Redis`.
     """
     # Когда / Тогда
     assert jwk_repository.compile_template({"kid": KEY_ID}) == f"jwk:{KEY_ID}"
@@ -174,11 +200,14 @@ def test_compile_template_fills_missing_kid_with_glob(
 async def test_store_translates_transport_failure_into_repository_error(
     unavailable_repository: RedisPublicJwkRepository,
 ) -> None:
-    """Отказ транспорта Redis при записи.
+    """Отказ транспорта `Redis` при записи.
 
-    Given: Redis недоступен,
-    When: репозиторий сохраняет публичный ключ,
-    Then: ошибка транспорта превращается в ошибку репозитория с понятным текстом.
+    Given: `Redis` недоступен, When: репозиторий сохраняет публичный ключ, Then: ошибка транспорта
+    превращается в ошибку репозитория с понятным текстом.
+
+    Args:
+        unavailable_repository (RedisPublicJwkRepository): Репозиторий JWK с подменой недоступного
+            `Redis`.
     """
     # Когда / Тогда
     with pytest.raises(RepositoryError, match="saving error"):

@@ -1,4 +1,4 @@
-"""Тесты публикации ключей подписи на настоящем Redis."""
+"""Тесты публикации ключей подписи на настоящем `Redis`."""
 
 from pathlib import Path
 
@@ -21,11 +21,11 @@ pytestmark = pytest.mark.integration
 
 
 def _service(key_store_dir: Path, redis_client: Redis) -> RotateJwk:
-    """Собирает use case ротации ключей поверх настоящего Redis.
+    """Собирает use case ротации ключей поверх настоящего `Redis`.
 
     Args:
         key_store_dir (Path): Каталог приватного ключа подписи.
-        redis_client (Redis): Клиент Redis.
+        redis_client (Redis): Клиент `Redis`.
 
     Returns:
         RotateJwk: Use case генерации и публикации ключей.
@@ -41,11 +41,15 @@ async def test_jwks_endpoint_serves_key_published_in_redis(
     api_client: ASGIClient,
     key_store_dir: Path,
 ) -> None:
-    """Ключ, опубликованный в Redis, в ответе эндпоинта.
+    """Ключ, опубликованный в `Redis`, в ответе эндпоинта.
 
-    Given: настоящий Redis и сервис генерации ключей,
-    When: ключ опубликован в Redis, а потребитель запрашивает JWKS,
-    Then: эндпоинт отдаёт этот ключ без приватной части.
+    Given: настоящий `Redis` и сервис генерации ключей, When: ключ опубликован в `Redis`, а
+    потребитель запрашивает JWKS, Then: эндпоинт отдаёт этот ключ без приватной части.
+
+    Args:
+        redis_client (Redis): Клиент настоящего `Redis` в логической БД публичных ключей.
+        api_client (ASGIClient): ASGI-клиент приложения под тестом.
+        key_store_dir (Path): Временный каталог приватного ключа подписи.
     """
     # Дано
     rotate_jwk = _service(key_store_dir, redis_client)
@@ -74,9 +78,12 @@ async def test_rotated_key_gets_time_to_live(
 ) -> None:
     """Время жизни прошлого публичного ключа.
 
-    Given: сервис сгенерировал ключ и опубликовал его в Redis,
-    When: ключ ротирован,
-    Then: прошлый публичный ключ остаётся в Redis, но ограничен временем жизни.
+    Given: сервис сгенерировал ключ и опубликовал его в `Redis`, When: ключ ротирован, Then:
+    прошлый публичный ключ остаётся в `Redis`, но ограничен временем жизни.
+
+    Args:
+        redis_client (Redis): Клиент настоящего `Redis` в логической БД публичных ключей.
+        key_store_dir (Path): Временный каталог приватного ключа подписи.
     """
     # Дано
     rotate_jwk = _service(key_store_dir, redis_client)
@@ -106,9 +113,12 @@ async def test_repeated_rotation_keeps_ttl_of_older_key(
 ) -> None:
     """Повторная ротация не продлевает срок ключей прошлых ротаций.
 
-    Given: у ключа первой ротации уже ограничено время жизни,
-    When: ключ ротирован ещё раз,
-    Then: срок этого ключа не сбрасывается на новый TTL.
+    Given: у ключа первой ротации уже ограничено время жизни, When: ключ ротирован ещё раз, Then:
+    срок этого ключа не сбрасывается на новый TTL.
+
+    Args:
+        redis_client (Redis): Клиент настоящего `Redis` в логической БД публичных ключей.
+        key_store_dir (Path): Временный каталог приватного ключа подписи.
     """
     # Дано
     rotate_jwk = _service(key_store_dir, redis_client)

@@ -8,7 +8,11 @@ from ._base import RedisRepository
 # TODO: перерабатывается — в сессионной модели инвалидация идёт через сессию, а не по
 # отдельному токену; отзыв по `jti` пока остаётся только для ротации refresh-токена.
 class RedisRevokedTokensRepository(RedisRepository):
-    """Репозиторий отозванных токенов в Redis."""
+    """Репозиторий отозванных токенов в `Redis`.
+
+    Хранит маркеры отзыва по типу токена и `jti` с переданным TTL в секундах. Наличие маркера
+    используется при проверке действительности токена.
+    """
 
     _key_template = Template("token:$type:revoked:$jti")
 
@@ -19,9 +23,6 @@ class RedisRevokedTokensRepository(RedisRepository):
             token_type (TokenType): Тип токена (`access` или `refresh`).
             token_id (str): Идентификатор токена (`jti`).
             ttl (int): Оставшееся время жизни токена в секундах.
-
-        Raises:
-            RepositoryError: Если обращение к Redis завершилось ошибкой.
         """
         key = self.compile_template({"type": token_type.value, "jti": token_id})
 
@@ -35,11 +36,8 @@ class RedisRevokedTokensRepository(RedisRepository):
             token_type (TokenType): Тип токена (`access` или `refresh`).
             token_id (str): Идентификатор токена (`jti`).
 
-        Raises:
-            RepositoryError: Если обращение к Redis завершилось ошибкой.
-
         Returns:
-            bool: True, если токен помечен отозванным.
+            bool: `True`, если токен помечен отозванным.
         """
         key = self.compile_template({"type": token_type.value, "jti": token_id})
 

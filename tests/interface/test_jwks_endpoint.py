@@ -18,9 +18,12 @@ async def test_get_jwks_returns_published_key(
 ) -> None:
     """Набор публичных ключей подписи.
 
-    Given: сервис сгенерировал и опубликовал ключ подписи,
-    When: потребитель запрашивает JWKS,
-    Then: приходит 200 с опубликованным ключом и без приватной части.
+    Given: сервис сгенерировал и опубликовал ключ подписи, When: потребитель запрашивает JWKS,
+    Then: приходит `200` с опубликованным ключом и без приватной части.
+
+    Args:
+        jwks_client (ASGIClient): ASGI-клиент маршрута JWKS с тестовым хранилищем ключей.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
     """
     # Дано
     published = await rotate_jwk(KEY_TTL_SECONDS)
@@ -49,9 +52,11 @@ async def test_get_jwks_returns_empty_set_when_nothing_is_published(
 ) -> None:
     """Пустой набор ключей.
 
-    Given: ни один ключ подписи ещё не сгенерирован,
-    When: потребитель запрашивает JWKS,
-    Then: приходит 200 с пустым набором — это корректный ответ, а не ошибка.
+    Given: ни один ключ подписи ещё не сгенерирован, When: потребитель запрашивает JWKS, Then:
+    приходит `200` с пустым набором — это корректный ответ, а не ошибка.
+
+    Args:
+        jwks_client (ASGIClient): ASGI-клиент маршрута JWKS с тестовым хранилищем ключей.
     """
     # Когда
     response = await jwks_client.get(JWKS_PATH)
@@ -68,9 +73,12 @@ async def test_jwks_denies_methods_other_than_get(
 ) -> None:
     """Методы, отличные от GET.
 
-    Given: маршрут отдаёт набор ключей только методом GET,
-    When: запрос приходит другим методом,
-    Then: приходит 405 с указанием разрешённого метода.
+    Given: маршрут отдаёт набор ключей только методом GET, When: запрос приходит другим методом,
+    Then: приходит `405` с указанием разрешённого метода.
+
+    Args:
+        jwks_client (ASGIClient): ASGI-клиент маршрута JWKS с тестовым хранилищем ключей.
+        method (str): HTTP-метод запроса, который должен быть отклонён.
     """
     # Когда
     response = await jwks_client.request(method, JWKS_PATH)
@@ -86,9 +94,14 @@ async def test_get_jwks_fails_with_server_error_when_cache_is_unavailable(
 ) -> None:
     """Отказ кеша публичных ключей.
 
-    Given: Redis с публичными JWK недоступен,
-    When: потребитель запрашивает JWKS,
-    Then: приходит 500: набор ключей нечем собрать.
+    Given: `Redis` с публичными JWK недоступен, When: потребитель запрашивает JWKS, Then: приходит
+    `500`: набор ключей нечем собрать.
+
+    Args:
+        jwks_client_factory (JWKSClientFactory): Фабрика ASGI-клиентов JWKS с заданным
+            репозиторием.
+        unavailable_repository (RedisPublicJwkRepository): Репозиторий JWK с подменой недоступного
+            `Redis`.
     """
     # Дано
     client = jwks_client_factory(unavailable_repository)

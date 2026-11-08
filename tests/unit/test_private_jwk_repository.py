@@ -17,9 +17,12 @@ async def test_acquire_returns_none_before_first_store(
 ) -> None:
     """Приватный ключ ещё не сгенерирован.
 
-    Given: keyfile отсутствует,
-    When: репозиторий отдаёт приватный ключ,
-    Then: он возвращает None — сервис по этому признаку генерирует новый ключ.
+    Given: keyfile отсутствует, When: репозиторий отдаёт приватный ключ, Then: он возвращает `None`
+    — сервис по этому признаку генерирует новый ключ.
+
+    Args:
+        private_jwk_repository (FilePrivateJwkRepository): Репозиторий приватного ключа во
+            временном каталоге.
     """
     assert await private_jwk_repository.acquire() is None
 
@@ -30,9 +33,13 @@ async def test_store_writes_key_file(
 ) -> None:
     """Запись приватного ключа.
 
-    Given: keyfile ещё не существует,
-    When: репозиторий записывает приватный ключ,
-    Then: файл создан, а последующее чтение возвращает его содержимое.
+    Given: keyfile ещё не существует, When: репозиторий записывает приватный ключ, Then: файл
+    создан, а последующее чтение возвращает его содержимое.
+
+    Args:
+        private_jwk_repository (FilePrivateJwkRepository): Репозиторий приватного ключа во
+            временном каталоге.
+        key_store_dir (Path): Временный каталог приватного ключа подписи.
     """
     await private_jwk_repository.store(PAYLOAD)
 
@@ -45,9 +52,12 @@ async def test_acquire_reads_latest_key_after_rotation(
 ) -> None:
     """Ротация приватного ключа.
 
-    Given: репозиторий уже отдал сгенерированный приватный ключ,
-    When: ключ записывается заново, как при ротации,
-    Then: следующее чтение возвращает ротированный ключ, а не прежний.
+    Given: репозиторий уже отдал сгенерированный приватный ключ, When: ключ записывается заново,
+    как при ротации, Then: следующее чтение возвращает ротированный ключ, а не прежний.
+
+    Args:
+        private_jwk_repository (FilePrivateJwkRepository): Репозиторий приватного ключа во
+            временном каталоге.
     """
     await private_jwk_repository.store(PAYLOAD)
     assert await private_jwk_repository.acquire() == PAYLOAD
@@ -63,9 +73,13 @@ async def test_repository_does_not_keep_state_between_instances(
 ) -> None:
     """Отсутствие состояния у репозитория.
 
-    Given: один экземпляр репозитория записал приватный ключ,
-    When: другой экземпляр, из другого запроса, читает ключ,
-    Then: он видит файл с диска, а не состояние первого экземпляра.
+    Given: один экземпляр репозитория записал приватный ключ, When: другой экземпляр, из другого
+    запроса, читает ключ, Then: он видит файл с диска, а не состояние первого экземпляра.
+
+    Args:
+        private_jwk_repository (FilePrivateJwkRepository): Репозиторий приватного ключа во
+            временном каталоге.
+        key_store_dir (Path): Временный каталог приватного ключа подписи.
     """
     await private_jwk_repository.store(PAYLOAD)
 
@@ -80,9 +94,13 @@ async def test_acquire_reports_unreadable_file_as_repository_error(
 ) -> None:
     """Ошибка чтения keyfile.
 
-    Given: по пути keyfile лежит каталог, а не файл,
-    When: репозиторий читает приватный ключ,
-    Then: ошибка файловой системы приходит как ошибка репозитория.
+    Given: по пути keyfile лежит каталог, а не файл, When: репозиторий читает приватный ключ, Then:
+    ошибка файловой системы приходит как ошибка репозитория.
+
+    Args:
+        private_jwk_repository (FilePrivateJwkRepository): Репозиторий приватного ключа во
+            временном каталоге.
+        key_store_dir (Path): Временный каталог приватного ключа подписи.
     """
     (key_store_dir / FilePrivateJwkRepository.FILE_NAME).mkdir(parents=True)
 

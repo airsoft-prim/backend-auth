@@ -1,4 +1,4 @@
-"""Тесты репозитория отозванных токенов в Redis."""
+"""Тесты репозитория отозванных токенов в `Redis`."""
 
 import pytest
 
@@ -17,9 +17,13 @@ async def test_store_writes_token_under_type_and_jti(
 ) -> None:
     """Сохранение отозванного токена.
 
-    Given: репозиторий и токен доступа,
-    When: токен помечается отозванным,
-    Then: в Redis появляется ключ с типом и `jti`, а запись ограничена остатком срока жизни.
+    Given: репозиторий и токен доступа, When: токен помечается отозванным, Then: в `Redis`
+    появляется ключ с типом и `jti`, а запись ограничена остатком срока жизни.
+
+    Args:
+        blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий маркеров отзыва
+            токенов поверх подмены `Redis`.
+        redis_double (InMemoryRedis): Подмена `Redis` с хранилищем значений и TTL в памяти.
     """
     # Дано
     key = f"token:access:revoked:{TOKEN_ID}"
@@ -37,9 +41,12 @@ async def test_contains_reports_stored_token(
 ) -> None:
     """Проверка отозванного токена.
 
-    Given: токен помечен отозванным,
-    When: репозиторий проверяет этот токен,
-    Then: он сообщает, что токен отозван.
+    Given: токен помечен отозванным, When: репозиторий проверяет этот токен, Then: он сообщает, что
+    токен отозван.
+
+    Args:
+        blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий маркеров отзыва
+            токенов поверх подмены `Redis`.
     """
     # Дано
     await blacklisted_tokens_repository.store(TokenType.ACCESS, TOKEN_ID, TTL_SECONDS)
@@ -56,9 +63,12 @@ async def test_contains_reports_token_that_was_not_stored(
 ) -> None:
     """Проверка действующего токена.
 
-    Given: токен не помечался отозванным,
-    When: репозиторий проверяет этот токен,
-    Then: он сообщает, что токен действует.
+    Given: токен не помечался отозванным, When: репозиторий проверяет этот токен, Then: он
+    сообщает, что токен действует.
+
+    Args:
+        blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий маркеров отзыва
+            токенов поверх подмены `Redis`.
     """
     # Когда
     is_blacklisted = await blacklisted_tokens_repository.check(TokenType.ACCESS, TOKEN_ID)
@@ -70,11 +80,14 @@ async def test_contains_reports_token_that_was_not_stored(
 async def test_access_and_refresh_tokens_with_same_id_are_independent(
     blacklisted_tokens_repository: RedisRevokedTokensRepository,
 ) -> None:
-    """Разделение пространств access- и refresh-токенов.
+    """Разделение пространств `access`- и `refresh`-токенов.
 
-    Given: отозван access-токен с некоторым `jti`,
-    When: репозиторий проверяет refresh-токен с тем же `jti`,
-    Then: refresh-токен считается действующим: типы токенов не пересекаются.
+    Given: отозван `access`-токен с некоторым `jti`, When: репозиторий проверяет `refresh`-токен с
+    тем же `jti`, Then: `refresh`-токен считается действующим: типы токенов не пересекаются.
+
+    Args:
+        blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий маркеров отзыва
+            токенов поверх подмены `Redis`.
     """
     # Дано
     await blacklisted_tokens_repository.store(TokenType.ACCESS, TOKEN_ID, TTL_SECONDS)
@@ -89,11 +102,14 @@ async def test_access_and_refresh_tokens_with_same_id_are_independent(
 def test_compile_template_builds_key_with_type_and_jti(
     blacklisted_tokens_repository: RedisRevokedTokensRepository,
 ) -> None:
-    """Сборка ключа Redis из шаблона.
+    """Сборка ключа `Redis` из шаблона.
 
-    Given: шаблон ключа блэклиста,
-    When: шаблон собирается с типом и `jti`,
-    Then: ключ получает вид `token:<access|refresh>:revoked:<jti>`.
+    Given: шаблон ключа блэклиста, When: шаблон собирается с типом и `jti`, Then: ключ получает вид
+    `token:<access|refresh>:revoked:<jti>`.
+
+    Args:
+        blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий маркеров отзыва
+            токенов поверх подмены `Redis`.
     """
     # Когда / Тогда
     key = blacklisted_tokens_repository.compile_template(
@@ -104,11 +120,10 @@ def test_compile_template_builds_key_with_type_and_jti(
 
 
 async def test_store_translates_transport_failure_into_repository_error() -> None:
-    """Отказ транспорта Redis при записи.
+    """Отказ транспорта `Redis` при записи.
 
-    Given: Redis недоступен,
-    When: репозиторий помечает токен отозванным,
-    Then: ошибка транспорта превращается в ошибку репозитория с понятным текстом.
+    Given: `Redis` недоступен, When: репозиторий помечает токен отозванным, Then: ошибка транспорта
+    превращается в ошибку репозитория с понятным текстом.
     """
     # Дано
     repository = RedisRevokedTokensRepository(as_redis(InMemoryRedis(unavailable=True)))
@@ -119,11 +134,10 @@ async def test_store_translates_transport_failure_into_repository_error() -> Non
 
 
 async def test_contains_translates_transport_failure_into_repository_error() -> None:
-    """Отказ транспорта Redis при чтении.
+    """Отказ транспорта `Redis` при чтении.
 
-    Given: Redis недоступен,
-    When: репозиторий проверяет отзыв токена,
-    Then: ошибка транспорта превращается в ошибку репозитория с понятным текстом.
+    Given: `Redis` недоступен, When: репозиторий проверяет отзыв токена, Then: ошибка транспорта
+    превращается в ошибку репозитория с понятным текстом.
     """
     # Дано
     repository = RedisRevokedTokensRepository(as_redis(InMemoryRedis(unavailable=True)))

@@ -57,12 +57,12 @@ def me_client(
     Args:
         api_app (FastAPI): Приложение под тестом.
         user_repository (InMemoryUserRepository): Подмена репозитория учётных записей.
-        verify_token (VerifyToken): Use case проверки токенов поверх
-            подмены Redis с опубликованными JWK.
-        blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий
-            отозванных токенов поверх подмены Redis.
-        revoked_sessions_repository (RedisRevokedSessionsRepository): Репозиторий
-            отозванных сессий поверх подмены Redis.
+        verify_token (VerifyToken): Use case проверки токенов поверх подмены `Redis` с
+            опубликованными JWK.
+        blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий отозванных
+            токенов поверх подмены `Redis`.
+        revoked_sessions_repository (RedisRevokedSessionsRepository): Репозиторий отозванных сессий
+            поверх подмены `Redis`.
 
     Returns:
         ASGIClient: Клиент маршрута профиля.
@@ -84,8 +84,8 @@ def _stored_account(
     """Собирает учётную запись для ответа профиля.
 
     Args:
-        disabled (bool, optional): Признак блокировки. Defaults to False.
-        role (UserRole, optional): Системная роль. Defaults to `UserRole.MODERATOR`.
+        disabled (bool): Признак блокировки.
+        role (UserRole): Системная роль.
 
     Returns:
         User: Учётная запись с заполненными Id и метками времени.
@@ -110,16 +110,15 @@ async def _issue_token(
     *,
     subject: int | str = USER_ID,
 ) -> str:
-    """Публикует ключ и выпускает access-токен для проверки профиля.
+    """Публикует ключ и выпускает `access`-токен для проверки профиля.
 
     Args:
         rotate_jwk (RotateJwk): Use case генерации и публикации ключей.
         sign_token (SignToken): Use case выпуска токенов.
-        subject (int | str, optional): Идентификатор пользователя в `sub`.
-            Defaults to USER_ID.
+        subject (int | str): Идентификатор пользователя в `sub`.
 
     Returns:
-        str: Подписанный access-токен.
+        str: Подписанный `access`-токен.
     """
     await rotate_jwk(TTL_SECONDS)
     token, _ = await sign_token(subject, SID, not_required={"srl": SUBJECT_ROLE})
@@ -159,9 +158,14 @@ async def test_me_returns_owner_profile(
 ) -> None:
     """Профиль владельца действующего токена.
 
-    Given: действующий токен и учётная запись с этим Id,
-    When: владелец запрашивает свой профиль,
-    Then: приходит 200 с данными учётной записи без хеша пароля и служебных полей.
+    Given: действующий токен и учётная запись с этим Id, When: владелец запрашивает свой профиль,
+    Then: приходит `200` с данными учётной записи без хеша пароля и служебных полей.
+
+    Args:
+        me_client (ASGIClient): ASGI-клиент профиля с тестовыми зависимостями.
+        user_repository (InMemoryUserRepository): Подмена репозитория учётных записей в памяти.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
+        sign_token (SignToken): Сценарий подписи `access`-токена ключом тестового хранилища.
     """
     # Дано
     user_repository.users.append(_stored_account())
@@ -193,9 +197,14 @@ async def test_me_returns_profile_of_blocked_user(
 ) -> None:
     """Профиль заблокированного владельца токена.
 
-    Given: учётная запись заблокирована, но её токен ещё действует,
-    When: владелец запрашивает профиль,
-    Then: приходит 200: блокировка закрывает вход, но не отзывает уже выданный токен.
+    Given: учётная запись заблокирована, но её токен ещё действует, When: владелец запрашивает
+    профиль, Then: приходит `200`: блокировка закрывает вход, но не отзывает уже выданный токен.
+
+    Args:
+        me_client (ASGIClient): ASGI-клиент профиля с тестовыми зависимостями.
+        user_repository (InMemoryUserRepository): Подмена репозитория учётных записей в памяти.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
+        sign_token (SignToken): Сценарий подписи `access`-токена ключом тестового хранилища.
     """
     # Дано
     user_repository.users.append(_stored_account(disabled=True))
@@ -213,9 +222,11 @@ async def test_me_returns_profile_of_blocked_user(
 async def test_me_requires_bearer_token(me_client: ASGIClient) -> None:
     """Профиль без заголовка авторизации.
 
-    Given: запрос без заголовка `Authorization`,
-    When: клиент запрашивает профиль,
-    Then: приходит 401 с требованием Bearer-аутентификации.
+    Given: запрос без заголовка `Authorization`, When: клиент запрашивает профиль, Then: приходит
+    `401` с требованием Bearer-аутентификации.
+
+    Args:
+        me_client (ASGIClient): ASGI-клиент профиля с тестовыми зависимостями.
     """
     # Когда
     response = await me_client.get(ME_PATH)
@@ -232,9 +243,11 @@ async def test_me_requires_bearer_token(me_client: ASGIClient) -> None:
 async def test_me_rejects_invalid_token(me_client: ASGIClient) -> None:
     """Профиль с невалидным токеном.
 
-    Given: в заголовке передана строка, не являющаяся JWT,
-    When: клиент запрашивает профиль,
-    Then: приходит 403: токен не проходит проверку.
+    Given: в заголовке передана строка, не являющаяся JWT, When: клиент запрашивает профиль, Then:
+    приходит `403`: токен не проходит проверку.
+
+    Args:
+        me_client (ASGIClient): ASGI-клиент профиля с тестовыми зависимостями.
     """
     # Когда
     response = await me_client.get(ME_PATH, headers=_authorization("not-a-jwt"))
@@ -253,9 +266,16 @@ async def test_me_rejects_revoked_token(
 ) -> None:
     """Профиль с отозванным токеном.
 
-    Given: токен уже отозван выходом,
-    When: клиент запрашивает профиль,
-    Then: приходит 403: отозванный токен больше не принимается.
+    Given: токен уже отозван выходом, When: клиент запрашивает профиль, Then: приходит `403`:
+    отозванный токен больше не принимается.
+
+    Args:
+        me_client (ASGIClient): ASGI-клиент профиля с тестовыми зависимостями.
+        user_repository (InMemoryUserRepository): Подмена репозитория учётных записей в памяти.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
+        sign_token (SignToken): Сценарий подписи `access`-токена ключом тестового хранилища.
+        blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий маркеров отзыва
+            токенов поверх подмены `Redis`.
     """
     # Дано
     user_repository.users.append(_stored_account())
@@ -280,9 +300,13 @@ async def test_me_rejects_unknown_user(
 ) -> None:
     """Профиль токена, чья учётная запись не найдена.
 
-    Given: токен подписан, но учётной записи с его `sub` нет,
-    When: клиент запрашивает профиль,
-    Then: приходит 401: владельца токена идентифицировать нельзя.
+    Given: токен подписан, но учётной записи с его `sub` нет, When: клиент запрашивает профиль,
+    Then: приходит `401`: владельца токена идентифицировать нельзя.
+
+    Args:
+        me_client (ASGIClient): ASGI-клиент профиля с тестовыми зависимостями.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
+        sign_token (SignToken): Сценарий подписи `access`-токена ключом тестового хранилища.
     """
     # Дано
     token = await _issue_token(rotate_jwk, sign_token)
@@ -302,9 +326,13 @@ async def test_me_rejects_non_numeric_subject(
 ) -> None:
     """Профиль токена с нечисловым субъектом.
 
-    Given: в `sub` токена лежит не числовой идентификатор,
-    When: клиент запрашивает профиль,
-    Then: приходит 403: токен не позволяет выбрать учётную запись.
+    Given: в `sub` токена лежит не числовой идентификатор, When: клиент запрашивает профиль, Then:
+    приходит `403`: токен не позволяет выбрать учётную запись.
+
+    Args:
+        me_client (ASGIClient): ASGI-клиент профиля с тестовыми зависимостями.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
+        sign_token (SignToken): Сценарий подписи `access`-токена ключом тестового хранилища.
     """
     # Дано
     token = await _issue_token(rotate_jwk, sign_token, subject="not-a-number")

@@ -32,7 +32,12 @@ REFRESH_TOKEN_COOKIE: Final[str] = "refresh_token"  # noqa: S105
 
 
 class SignToken(AbstractUseCase):
-    """Use case подписи JWT-токена."""
+    """Use case подписи JWT-токена.
+
+    Читает приватный ключ Ed25519 через порт хранилища, собирает заголовок и `claims` по
+    `TokenConfig` и подписывает JWT алгоритмом EdDSA. Дополнительные `claims` могут заменить
+    базовые значения.
+    """
 
     def __init__(self, config: TokenConfig, key_repository: PrivateJwkRepository) -> None:
         """Инициализация класса.
@@ -52,12 +57,8 @@ class SignToken(AbstractUseCase):
         Args:
             subject (int | str): Идентификатор пользователя (`sub`).
             session (str): Идентификатор сессии.
-            not_required (Mapping[str, Any] | None, optional): Дополнительные claims,
-                объединяемые с базовыми через `|`. Defaults to None.
-
-        Raises:
-            JWTEncryptionError: Файл ключа отсутствует, не читается как PEM или
-                содержит ключ другого алгоритма.
+            not_required (Mapping[str, Any] | None): Дополнительные `claims`, объединяемые с
+                базовыми через `|`.
 
         Returns:
             tuple[str, int]: Подписанный JWT и срок жизни в секундах (`expires_in`).
@@ -78,12 +79,12 @@ class SignToken(AbstractUseCase):
     async def _acquire_private_key(self) -> Ed25519PrivateKey:
         """Читает приватный ключ подписи из keyfile.
 
-        Raises:
-            JWTEncryptionError: Файл отсутствует, не читается как PEM или содержит
-                ключ чужого алгоритма.
-
         Returns:
             Ed25519PrivateKey: Приватный ключ подписи.
+
+        Raises:
+            JWTEncryptionError: Файл отсутствует, не читается как `PEM` или содержит ключ чужого
+                алгоритма.
         """
         if (pem := await self._private_key.acquire()) is None:
             msg = "Signing key file is missing."
@@ -105,7 +106,11 @@ class SignToken(AbstractUseCase):
 
 @dataclass(frozen=True, slots=True)
 class TokenPair:
-    """Пара выпущенных токенов сессии (access + refresh)."""
+    """Пара выпущенных токенов сессии (`access` + `refresh`).
+
+    Содержит строки `access`- и `refresh`-токенов одной сессии. `expires_in` задаёт срок жизни
+    `access`- токена в секундах.
+    """
 
     access_token: str
     refresh_token: str
@@ -113,20 +118,24 @@ class TokenPair:
 
 
 class IssueTokenPair(AbstractUseCase):
-    """Use case выпуска пары токенов (access + refresh) для сессии."""
+    """Use case выпуска пары токенов (`access` + `refresh`) для сессии.
+
+    Вызывает отдельные сценарии подписи `access`- и `refresh`-токенов с общим `sid`. Системная роль
+    включается только в `access`-токен как `srl`.
+    """
 
     def __init__(self, access: SignToken, refresh: SignToken) -> None:
         """Инициализация класса.
 
         Args:
-            access (SignToken): Use case подписи access-токена.
-            refresh (SignToken): Use case подписи refresh-токена.
+            access (SignToken): Use case подписи `access`-токена.
+            refresh (SignToken): Use case подписи `refresh`-токена.
         """
         self._access = access
         self._refresh = refresh
 
     async def __call__(self, subject: int | str, session: str, role: str) -> TokenPair:
-        """Выпускает access- и refresh-токены одной сессии.
+        """Выпускает `access`- и `refresh`-токены одной сессии.
 
         Args:
             subject (int | str): Идентификатор пользователя (`sub`).
@@ -134,7 +143,7 @@ class IssueTokenPair(AbstractUseCase):
             role (str): Системная роль пользователя для claim `srl`.
 
         Returns:
-            TokenPair: Подписанная пара токенов и срок жизни access-токена.
+            TokenPair: Подписанная пара токенов и срок жизни `access`-токена.
         """
         access_token, expires_in = await self._access(subject, session, not_required={"srl": role})
         refresh_token, _ = await self._refresh(subject, session)
@@ -145,7 +154,11 @@ class IssueTokenPair(AbstractUseCase):
 
 
 class VerifyToken[ClaimsT](AbstractUseCase):
-    """Use case проверки подписанного JWT-токена."""
+    """Use case проверки подписанного JWT-токена.
+
+    Выбирает опубликованный ключ по `kid`, проверяет тип токена, подпись EdDSA, `issuer`,
+    `audience` и обязательные `claims`. Возвращает `claims` заданного конфигурацией типа.
+    """
 
     def __init__(self, config: TokenConfig[ClaimsT], key_repository: PublicJwkRepository) -> None:
         """Инициализация класса.
@@ -158,19 +171,18 @@ class VerifyToken[ClaimsT](AbstractUseCase):
         self._public_key = key_repository
 
     async def __call__(self, token: str, *, audience: str | None = None) -> ClaimsT:
-        """Проверяет токен и возвращает его claims.
+        """Проверяет токен и возвращает его `claims`.
 
         Args:
             token (str): Подписанный JWT.
-            audience (str | None, optional): Ожидаемая аудитория вместо заданной
-                в конфигурации. Defaults to None.
-
-        Raises:
-            JWTDecryptionError: Заголовок повреждён, ключ не опубликован, подпись не
-                сходится или claims не прошли проверку.
+            audience (str | None): Ожидаемая аудитория вместо заданной в конфигурации.
 
         Returns:
-            ClaimsT: Проверенные claims токена.
+            ClaimsT: Проверенные `claims` токена.
+
+        Raises:
+            JWTDecryptionError: Заголовок повреждён, ключ не опубликован, подпись не сходится или
+                `claims` не прошли проверку.
         """
         header = self._get_header(token)
 
@@ -210,11 +222,11 @@ class VerifyToken[ClaimsT](AbstractUseCase):
         Args:
             token (str): Подписанный JWT.
 
-        Raises:
-            JWTDecryptionError: Заголовок не читается.
-
         Returns:
             dict[str, Any]: Заголовок JWT.
+
+        Raises:
+            JWTDecryptionError: Заголовок не читается.
         """
         try:
             return jwt.get_unverified_header(token)
@@ -225,7 +237,11 @@ class VerifyToken[ClaimsT](AbstractUseCase):
 
 
 class EnsureTokenActive(AbstractUseCase):
-    """Use case проверки, что токен не отозван."""
+    """Use case проверки, что токен не отозван.
+
+    Проверяет маркеры отзыва сессии по `sid` и отдельного токена по `jti`. Наличие любого маркера
+    приводит к `TokenRevokedError`.
+    """
 
     def __init__(
         self, tokens: RevokedTokensRepository, sessions: RevokedSessionsRepository
@@ -245,8 +261,8 @@ class EnsureTokenActive(AbstractUseCase):
         Сначала проверяется, не отозвана ли сессия (`sid`), затем — сам токен (`jti`).
 
         Args:
-            claims (TokenClaims): Проверенные claims токена.
-            token_type (TokenType, optional): Тип токена. Defaults to TokenType.ACCESS.
+            claims (TokenClaims): Проверенные `claims` токена.
+            token_type (TokenType): Тип токена.
 
         Raises:
             TokenRevokedError: Токен уже помечен отозванным.
@@ -261,7 +277,11 @@ class EnsureTokenActive(AbstractUseCase):
 
 
 class RevokeToken(AbstractUseCase):
-    """Use case отзыва выданного токена."""
+    """Use case отзыва выданного токена.
+
+    Сохраняет маркер отзыва типа токена и `jti` на остаток срока действия `exp`. Для истёкшего
+    токена запись не создаётся.
+    """
 
     def __init__(self, tokens: RevokedTokensRepository) -> None:
         """Инициализация класса.
@@ -274,12 +294,12 @@ class RevokeToken(AbstractUseCase):
     async def __call__(self, claims: TokenClaims, token_type: TokenType = TokenType.ACCESS) -> None:
         """Помечает токен отозванным до истечения его срока действия.
 
-        Запись в Redis получает TTL, равный остатку срока жизни токена. Если токен уже
-        истёк, запись не создаётся: проверять его отзыв больше не нужно.
+        Запись в `Redis` получает TTL, равный остатку срока жизни токена. Если токен уже истёк,
+        запись не создаётся: проверять его отзыв больше не нужно.
 
         Args:
-            claims (TokenClaims): Проверенные claims токена.
-            token_type (TokenType, optional): Тип токена. Defaults to TokenType.ACCESS.
+            claims (TokenClaims): Проверенные `claims` токена.
+            token_type (TokenType): Тип токена.
         """
         if (ttl := claims["exp"] - int(datetime.now(UTC).timestamp())) <= 0:
             return
@@ -288,7 +308,11 @@ class RevokeToken(AbstractUseCase):
 
 
 class RotateRefreshToken(AbstractUseCase):
-    """Use case ротации refresh-токена с обнаружением повторного использования."""
+    """Use case ротации `refresh`-токена с обнаружением повторного использования.
+
+    Проверяет отзыв сессии и `refresh`-токена, продлевает сессию и отзывает предъявленный токен.
+    Повторное использование отозванного `refresh`-токена вызывает отзыв всей сессии.
+    """
 
     def __init__(
         self,
@@ -314,16 +338,16 @@ class RotateRefreshToken(AbstractUseCase):
         self._sessions = sessions
 
     async def __call__(self, claims: RefreshTokenClaims) -> None:
-        """Продлевает сессию и отзывает старый refresh-токен.
+        """Продлевает сессию и отзывает старый `refresh`-токен.
 
-        Повторное предъявление уже ротированного refresh-токена — признак кражи:
-        в этом случае отзывается вся сессия, а не только предъявленный токен.
+        Повторное предъявление уже ротированного `refresh`-токена — признак кражи: в этом случае
+        отзывается вся сессия, а не только предъявленный токен.
 
         Args:
-            claims (RefreshTokenClaims): Проверенные claims refresh-токена.
+            claims (RefreshTokenClaims): Проверенные `claims` `refresh`-токена.
 
         Raises:
-            TokenRevokedError: Сессия отозвана или refresh-токен уже ротирован.
+            TokenRevokedError: Сессия отозвана или `refresh`-токен уже ротирован.
         """
         if await self._sessions.check(claims["sid"]):
             msg = "Token is revoked."
@@ -339,7 +363,11 @@ class RotateRefreshToken(AbstractUseCase):
 
 
 class RevokeSession(AbstractUseCase):
-    """Use case отзыва сессии по её идентификатору."""
+    """Use case отзыва сессии по её идентификатору.
+
+    Сохраняет маркер отзыва `sid` до истечения записи сессии и устанавливает `revoked_at`. При
+    отсутствии сессии срок маркера рассчитывается из `exp` предъявленного токена.
+    """
 
     def __init__(self, revoked: RevokedSessionsRepository, sessions: SessionRepository) -> None:
         """Инициализация класса.
@@ -354,15 +382,15 @@ class RevokeSession(AbstractUseCase):
     async def __call__(self, claims: TokenClaims) -> None:
         """Помечает сессию отозванной до истечения срока её действия.
 
-        Срок жизни маркера берётся из записи сессии (`expires_at`), а не из
-        предъявленного токена: при повторном использовании refresh-токена его `exp`
-        относится к старому токену, тогда как сессия уже продлена новым.
+        Срок жизни маркера берётся из записи сессии (`expires_at`), а не из предъявленного токена:
+        при повторном использовании `refresh`-токена его `exp` относится к старому токену, тогда
+        как сессия уже продлена новым.
 
-        Все токены сессии (`sid`) становятся недействительными: их проверка в
-        `EnsureTokenActive` сначала сверяется с отозванной сессией.
+        Все токены сессии (`sid`) становятся недействительными: их проверка в `EnsureTokenActive`
+        сначала сверяется с отозванной сессией.
 
         Args:
-            claims (TokenClaims): Проверенные claims refresh-токена сессии.
+            claims (TokenClaims): Проверенные `claims` `refresh`-токена сессии.
         """
         now = datetime.now(UTC)
         session = await self._sessions.get(claims["sid"])
@@ -383,7 +411,11 @@ class RevokeSession(AbstractUseCase):
 
 
 class Authorize[ClaimsT: TokenClaims](AbstractUseCase):
-    """Use case авторизации запроса по Bearer-токену."""
+    """Use case авторизации запроса по Bearer-токену.
+
+    Отклоняет отсутствие токена, вызывает `VerifyToken` и проверяет маркеры отзыва через
+    `EnsureTokenActive`. Возвращает проверенные `claims` без проверки прав на отдельный ресурс.
+    """
 
     def __init__(
         self,
@@ -396,26 +428,24 @@ class Authorize[ClaimsT: TokenClaims](AbstractUseCase):
         Args:
             verify (VerifyToken[ClaimsT]): Use case проверки JWT-токена.
             ensure_active (EnsureTokenActive): Use case проверки отзыва токена.
-            token_type (TokenType, optional): Тип проверяемого токена.
-                Defaults to TokenType.ACCESS.
+            token_type (TokenType): Тип проверяемого токена.
         """
         self._verify = verify
         self._ensure_active = ensure_active
         self._token_type = token_type
 
     async def __call__(self, token: str | None) -> ClaimsT:
-        """Проверяет Bearer-токен и возвращает его claims.
+        """Проверяет Bearer-токен и возвращает его `claims`.
 
         Args:
-            token (str | None): Токен из заголовка `Authorization` или None, если
-                заголовок отсутствует.
+            token (str | None): Токен из заголовка `Authorization` или `None`, если заголовок
+                отсутствует.
+
+        Returns:
+            ClaimsT: Проверенные `claims` токена.
 
         Raises:
             UserAuthorizationError: Токен не передан.
-            JWTDecryptionError: Токен недействителен, просрочен или уже отозван.
-
-        Returns:
-            ClaimsT: Проверенные claims токена.
         """
         if token is None:
             msg = "Bearer token is missing."

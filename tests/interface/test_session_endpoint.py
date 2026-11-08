@@ -46,17 +46,17 @@ def session_client(
     revoked_sessions_repository: RedisRevokedSessionsRepository,
     session_repository: RedisSessionRepository,
 ) -> ASGIClient:
-    """Отдаёт клиент `/sessions` с подменами проверки refresh-токена, сессий и отзыва.
+    """Отдаёт клиент `/sessions` с подменами проверки `refresh`-токена, сессий и отзыва.
 
     Args:
         api_app (FastAPI): Приложение под тестом.
-        verify_refresh_token (VerifyToken[RefreshTokenClaims]): Use case проверки
-            refresh-токенов.
-        blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий
-            отозванных токенов поверх подмены Redis.
-        revoked_sessions_repository (RedisRevokedSessionsRepository): Репозиторий
-            отозванных сессий поверх подмены Redis.
-        session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены Redis.
+        verify_refresh_token (VerifyToken[RefreshTokenClaims]): Use case проверки `refresh`-
+            токенов.
+        blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий отозванных
+            токенов поверх подмены `Redis`.
+        revoked_sessions_repository (RedisRevokedSessionsRepository): Репозиторий отозванных сессий
+            поверх подмены `Redis`.
+        session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены `Redis`.
 
     Returns:
         ASGIClient: Клиент маршрутов `/sessions`.
@@ -82,15 +82,15 @@ async def _issue_refresh_token(
     *,
     sid: str = CURRENT_SID,
 ) -> str:
-    """Публикует ключ и выпускает refresh-токен для проверки `/sessions`.
+    """Публикует ключ и выпускает `refresh`-токен для проверки `/sessions`.
 
     Args:
         rotate_jwk (RotateJwk): Use case генерации и публикации ключей.
-        sign_refresh_token (SignToken): Use case выпуска refresh-токенов.
-        sid (str, optional): Идентификатор сессии в `sid`. Defaults to CURRENT_SID.
+        sign_refresh_token (SignToken): Use case выпуска `refresh`-токенов.
+        sid (str): Идентификатор сессии в `sid`.
 
     Returns:
-        str: Подписанный refresh-токен.
+        str: Подписанный `refresh`-токен.
     """
     await rotate_jwk(TTL_SECONDS)
     token, _ = await sign_refresh_token(USER_ID, sid)
@@ -99,7 +99,7 @@ async def _issue_refresh_token(
 
 
 def _cookie(token: str) -> dict[str, str]:
-    """Собирает заголовок cookie с refresh-токеном.
+    """Собирает заголовок cookie с `refresh`-токеном.
 
     Args:
         token (str): Refresh-токен.
@@ -111,10 +111,10 @@ def _cookie(token: str) -> dict[str, str]:
 
 
 async def _seed_sessions(session_repository: RedisSessionRepository) -> None:
-    """Кладёт в подмену Redis две активные сессии пользователя.
+    """Кладёт в подмену `Redis` две активные сессии пользователя.
 
     Args:
-        session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены Redis.
+        session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены `Redis`.
     """
     now = datetime.now(UTC)
     current = Session(
@@ -145,11 +145,18 @@ async def test_list_sessions_returns_active_sessions(
     rotate_jwk: RotateJwk,
     sign_refresh_token: SignToken,
 ) -> None:
-    """Список активных сессий владельца refresh-токена.
+    """Список активных сессий владельца `refresh`-токена.
 
-    Given: две активные сессии пользователя и действующий refresh-токен,
-    When: владелец запрашивает список сессий,
-    Then: приходит 200 с обеими сессиями, меткой текущей и контекстом входа.
+    Given: две активные сессии пользователя и действующий `refresh`-токен, When: владелец
+    запрашивает список сессий, Then: приходит `200` с обеими сессиями, меткой текущей и контекстом
+    входа.
+
+    Args:
+        session_client (ASGIClient): ASGI-клиент управления сессиями с тестовыми зависимостями.
+        session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены `Redis`.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
+        sign_refresh_token (SignToken): Сценарий подписи `refresh`-токена ключом тестового
+            хранилища.
     """
     # Дано
     await _seed_sessions(session_repository)
@@ -176,11 +183,13 @@ async def test_list_sessions_returns_active_sessions(
 
 
 async def test_list_sessions_requires_refresh_cookie(session_client: ASGIClient) -> None:
-    """Список сессий без refresh-токена в cookie.
+    """Список сессий без `refresh`-токена в cookie.
 
-    Given: запрос без cookie с refresh-токеном,
-    When: клиент запрашивает список сессий,
-    Then: приходит 401: сессию не идентифицировать.
+    Given: запрос без cookie с `refresh`-токеном, When: клиент запрашивает список сессий, Then:
+    приходит `401`: сессию не идентифицировать.
+
+    Args:
+        session_client (ASGIClient): ASGI-клиент управления сессиями с тестовыми зависимостями.
     """
     # Когда
     response = await session_client.get(LIST_PATH)
@@ -191,11 +200,13 @@ async def test_list_sessions_requires_refresh_cookie(session_client: ASGIClient)
 
 
 async def test_list_sessions_rejects_invalid_token(session_client: ASGIClient) -> None:
-    """Список сессий с невалидным refresh-токеном.
+    """Список сессий с невалидным `refresh`-токеном.
 
-    Given: в cookie передана строка, не являющаяся JWT,
-    When: клиент запрашивает список сессий,
-    Then: приходит 403: токен не проходит проверку.
+    Given: в cookie передана строка, не являющаяся JWT, When: клиент запрашивает список сессий,
+    Then: приходит `403`: токен не проходит проверку.
+
+    Args:
+        session_client (ASGIClient): ASGI-клиент управления сессиями с тестовыми зависимостями.
     """
     # Когда
     response = await session_client.get(LIST_PATH, headers=_cookie("not-a-jwt"))
@@ -213,9 +224,16 @@ async def test_close_session_revokes_selected_session(
 ) -> None:
     """Закрытие выбранной сессии.
 
-    Given: две активные сессии пользователя,
-    When: владелец закрывает одну из них,
-    Then: приходит 204, выбранная сессия отзывается, а текущая остаётся.
+    Given: две активные сессии пользователя, When: владелец закрывает одну из них, Then: приходит
+    `204`, выбранная сессия отзывается, а текущая остаётся.
+
+    Args:
+        session_client (ASGIClient): ASGI-клиент управления сессиями с тестовыми зависимостями.
+        session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены `Redis`.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
+        sign_refresh_token (SignToken): Сценарий подписи `refresh`-токена ключом тестового
+            хранилища.
+        redis_double (InMemoryRedis): Подмена `Redis` с хранилищем значений и TTL в памяти.
     """
     # Дано
     await _seed_sessions(session_repository)
@@ -247,9 +265,14 @@ async def test_close_session_rejects_unknown_session(
 ) -> None:
     """Закрытие несуществующей сессии.
 
-    Given: сессии с указанным `sid` нет,
-    When: владелец пытается её закрыть,
-    Then: приходит 404: сессия не найдена.
+    Given: сессии с указанным `sid` нет, When: владелец пытается её закрыть, Then: приходит `404`:
+    сессия не найдена.
+
+    Args:
+        session_client (ASGIClient): ASGI-клиент управления сессиями с тестовыми зависимостями.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
+        sign_refresh_token (SignToken): Сценарий подписи `refresh`-токена ключом тестового
+            хранилища.
     """
     # Дано
     token = await _issue_refresh_token(rotate_jwk, sign_refresh_token)
@@ -272,9 +295,15 @@ async def test_close_other_sessions_keeps_current(
 ) -> None:
     """Закрытие всех сессий, кроме текущей.
 
-    Given: две активные сессии пользователя,
-    When: владелец закрывает все сессии, кроме текущей,
-    Then: приходит 204, вторая сессия отзывается, а текущая остаётся активной.
+    Given: две активные сессии пользователя, When: владелец закрывает все сессии, кроме текущей,
+    Then: приходит `204`, вторая сессия отзывается, а текущая остаётся активной.
+
+    Args:
+        session_client (ASGIClient): ASGI-клиент управления сессиями с тестовыми зависимостями.
+        session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены `Redis`.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
+        sign_refresh_token (SignToken): Сценарий подписи `refresh`-токена ключом тестового
+            хранилища.
     """
     # Дано
     await _seed_sessions(session_repository)

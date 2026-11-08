@@ -20,8 +20,14 @@ from ._utils import ExceptionHandlersRegistrator, ExceptionsHandlingMap
 
 
 async def unexpected_exc_handler(_: Request, exc: Exception) -> JSONResponse:
-    """Любая неожиданная и/или неперехваченная ошибка транслируется данным обработчиком
-    в 500 код ответа на запрос.
+    """Возвращает ответ `500` для неожиданного исключения.
+
+    Args:
+        _ (Request): HTTP-запрос; обработчик его не использует.
+        exc (Exception): Исключение, переданное обработчику `FastAPI`.
+
+    Returns:
+        JSONResponse: JSON-ответ с кодом `500` и описанием ошибки.
     """
     logger.opt(exception=exc).error("Unexpected error.")
 
@@ -34,10 +40,14 @@ async def unexpected_exc_handler(_: Request, exc: Exception) -> JSONResponse:
 
 
 async def uncought_exc_handler(_: Request, exc: ApplicationError) -> JSONResponse:
-    """Обработчик неотловленных доменных ошибок.
+    """Возвращает ответ `422` для ошибки приложения без отдельного обработчика.
 
-    Срабатывает на все ошибки доменной логики, если для них не существует
-    специфического обработчика.
+    Args:
+        _ (Request): HTTP-запрос; обработчик его не использует.
+        exc (ApplicationError): Исключение, переданное обработчику `FastAPI`.
+
+    Returns:
+        JSONResponse: JSON-ответ с кодом `422` и описанием ошибки.
     """
     logger.opt(exception=exc).warning("Unexpected error.")
 
@@ -50,10 +60,14 @@ async def uncought_exc_handler(_: Request, exc: ApplicationError) -> JSONRespons
 
 
 async def provider_exc_handler(_: Request, exc: ProviderError) -> JSONResponse:
-    """Обработчик отказов внешних ресурсов.
+    """Возвращает ответ `500` при отказе внешнего ресурса.
 
-    Ошибки БД, кеша и файловой системы — отказ инфраструктуры, а не нарушение
-    бизнес-правила, поэтому клиент получает 500, а не 422.
+    Args:
+        _ (Request): HTTP-запрос; обработчик его не использует.
+        exc (ProviderError): Исключение, переданное обработчику `FastAPI`.
+
+    Returns:
+        JSONResponse: JSON-ответ с кодом `500` и описанием ошибки.
     """
     logger.opt(exception=exc).error("Infrastructure request failed.")
 
@@ -66,9 +80,14 @@ async def provider_exc_handler(_: Request, exc: ProviderError) -> JSONResponse:
 
 
 async def jwt_encryption_exc_handler(_: Request, exc: JWTEncryptionError) -> JSONResponse:
-    """Обработчик ошибок безопасности, связанных с выпуском JWT-токена.
+    """Возвращает ответ `500` при ошибке выпуска JWT.
 
-    Проблема при выпуске токена.
+    Args:
+        _ (Request): HTTP-запрос; обработчик его не использует.
+        exc (JWTEncryptionError): Исключение, переданное обработчику `FastAPI`.
+
+    Returns:
+        JSONResponse: JSON-ответ с кодом `500` и описанием ошибки.
     """
     logger.opt(exception=exc).error("Access token issuing failed.")
 
@@ -84,9 +103,14 @@ async def jwt_encryption_exc_handler(_: Request, exc: JWTEncryptionError) -> JSO
 
 
 async def jwt_decryption_exc_handler(_: Request, exc: JWTDecryptionError) -> JSONResponse:
-    """Обработчик ошибок безопасности, связанных с проверкой JWT-токена.
+    """Возвращает ответ `403` при ошибке проверки JWT.
 
-    Невалидный, просроченный или неподписанный токен.
+    Args:
+        _ (Request): HTTP-запрос; обработчик его не использует.
+        exc (JWTDecryptionError): Исключение, переданное обработчику `FastAPI`.
+
+    Returns:
+        JSONResponse: JSON-ответ с кодом `403` и описанием ошибки.
     """
     logger.opt(exception=exc).info("Access token check failed.")
 
@@ -99,7 +123,15 @@ async def jwt_decryption_exc_handler(_: Request, exc: JWTDecryptionError) -> JSO
 
 
 async def user_auth_exc_handler(_: Request, exc: UserAuthorizationError) -> JSONResponse:
-    """Обработчик ошибки авторизации пользователя."""
+    """Возвращает ответ `401` при отсутствии обязательного токена.
+
+    Args:
+        _ (Request): HTTP-запрос; обработчик его не использует.
+        exc (UserAuthorizationError): Исключение, переданное обработчику `FastAPI`.
+
+    Returns:
+        JSONResponse: JSON-ответ с кодом `401` и описанием ошибки.
+    """
     logger.opt(exception=exc).info("Bearer token is missing.")
 
     content = {
@@ -115,7 +147,15 @@ async def user_auth_exc_handler(_: Request, exc: UserAuthorizationError) -> JSON
 
 
 async def login_exc_handler(_: Request, exc: SecurityError) -> JSONResponse:
-    """Обработчик ошибок, возникающих во время процедуры login пользователя."""
+    """Возвращает одинаковый ответ `401` при ошибке логина или пароля.
+
+    Args:
+        _ (Request): HTTP-запрос; обработчик его не использует.
+        exc (SecurityError): Исключение, переданное обработчику `FastAPI`.
+
+    Returns:
+        JSONResponse: JSON-ответ с кодом `401` и описанием ошибки.
+    """
     exc_map: dict[type[SecurityError], int] = {
         UserIdentificationError: status.HTTP_401_UNAUTHORIZED,
         UserAuthenticationError: status.HTTP_401_UNAUTHORIZED,
@@ -132,7 +172,15 @@ async def login_exc_handler(_: Request, exc: SecurityError) -> JSONResponse:
 
 
 async def user_exists_exc_handler(_: Request, exc: UserAlreadyExistsError) -> JSONResponse:
-    """Обработчик ошибки занятых учётных данных при регистрации."""
+    """Возвращает ответ `409` при занятости логина или почты.
+
+    Args:
+        _ (Request): HTTP-запрос; обработчик его не использует.
+        exc (UserAlreadyExistsError): Исключение, переданное обработчику `FastAPI`.
+
+    Returns:
+        JSONResponse: JSON-ответ с кодом `409` и описанием ошибки.
+    """
     logger.opt(exception=exc).debug("User with provided data already exists.")
 
     content = {
@@ -144,7 +192,15 @@ async def user_exists_exc_handler(_: Request, exc: UserAlreadyExistsError) -> JS
 
 
 async def session_not_found_exc_handler(_: Request, exc: SessionNotFoundError) -> JSONResponse:
-    """Обработчик ошибки доступа к чужой или несуществующей сессии."""
+    """Возвращает ответ `404` для отсутствующей или чужой сессии.
+
+    Args:
+        _ (Request): HTTP-запрос; обработчик его не использует.
+        exc (SessionNotFoundError): Исключение, переданное обработчику `FastAPI`.
+
+    Returns:
+        JSONResponse: JSON-ответ с кодом `404` и описанием ошибки.
+    """
     logger.opt(exception=exc).debug("Session not found or not owned.")
 
     content = {

@@ -1,3 +1,11 @@
+"""Конфигурация сервиса из переменных окружения.
+
+Объединяет настройки приложения, PostgreSQL, `Redis`, ключей, токенов, сессий и лимита запросов.
+
+Предоставляет конфигурацию точкам сборки приложения и адаптерам; прикладные сценарии получают
+нужные значения через параметры.
+"""
+
 from datetime import UTC, datetime
 from functools import lru_cache
 from typing import Self
@@ -15,7 +23,11 @@ __all__ = ["Configs", "config", "get_app_config"]
 
 
 class Configs(BaseModel):
-    """Конфигурация приложения."""
+    """Конфигурация приложения.
+
+    Объединяет настройки приложения, PostgreSQL, `Redis` и безопасности. Валидатор предупреждает в
+    логе, если период ротации ключей короче срока жизни `access`-токена.
+    """
 
     app: ApplicationConfiguration = ApplicationConfiguration()
     cache: CacheConfiguration = CacheConfiguration()
@@ -24,14 +36,13 @@ class Configs(BaseModel):
 
     @model_validator(mode="after")
     def ensure_token_ttl(self) -> Self:
-        """Проверяет согласованность периода ротации ключей со временем жизни токена.
+        """Предупреждает о коротком периоде ротации ключей.
 
-        Период ротации считается по cron-правилу `SECURITY_KEY_ROTATION_RULE`: берутся два
-        ближайших момента ротации, а их разница принимается за период, в течение которого
-        публичный ключ прошлой генерации остаётся в наборе JWKS.
+        Вычисляет интервал между двумя ближайшими моментами cron-расписания и сравнивает его с
+        `ACCESS_TOKEN_TTL`. Несоответствие записывается в лог без отклонения конфигурации.
 
         Returns:
-            Self: Проверенная конфигурация приложения.
+            Self: Тот же экземпляр конфигурации.
         """
         rotation_clock = croniter(self.security.KEY_ROTATION_RULE, datetime.now(UTC))
 
@@ -47,12 +58,13 @@ class Configs(BaseModel):
 
 @lru_cache(maxsize=1)
 def get_app_config() -> Configs:
-    """Метод, предоставляющий конфигурацию приложения.
+    """Возвращает кешированный экземпляр конфигурации.
 
-    Удобен для использования внутри FastAPI Dependencies.
+    Читает окружение при первом вызове. Последующие вызовы используют кеш `lru_cache` до его явной
+    очистки.
 
     Returns:
-        Configs: Конфигурация приложения.
+        Configs: Общая конфигурация приложения.
     """
     return Configs()
 

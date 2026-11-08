@@ -23,16 +23,16 @@ __all__ = [
 class StubUserService:
     """Подмена сервиса учётных записей: запоминает вызов или поднимает заданную ошибку.
 
-    Маршрут проверяется без БД: аргументы вызова запоминаются — так тест видит, что
-    маршрут передал сервису логин, адрес и пароль в открытом виде.
+    Маршрут проверяется без БД: аргументы вызова запоминаются — так тест видит, что маршрут передал
+    сервису логин, адрес и пароль в открытом виде.
     """
 
     def __init__(self, *, error: Exception | None = None) -> None:
-        """Инициализация подмены.
+        """Инициализация класса.
 
         Args:
-            error (Exception | None, optional): Ошибка, которую регистрация поднимет
-                вместо записи учётной записи. Defaults to None.
+            error (Exception | None): Ошибка, которую регистрация поднимет вместо записи учётной
+                записи.
         """
         self._error = error
         self.received: dict[str, str] | None = None
@@ -62,8 +62,8 @@ type RegisterClientFactory = Callable[[StubUserService], ASGIClient]
 def jwks_client_factory(api_app: FastAPI) -> JWKSClientFactory:
     """Собирает клиент JWKS с указанным репозиторием публичных ключей.
 
-    Подменяется только репозиторий: маршрутизация, схемы ответа и обработка ошибок
-    остаются настоящими.
+    Подменяется только репозиторий: маршрутизация, схемы ответа и обработка ошибок остаются
+    настоящими.
 
     Args:
         api_app (FastAPI): Приложение под тестом.
@@ -73,6 +73,7 @@ def jwks_client_factory(api_app: FastAPI) -> JWKSClientFactory:
     """
 
     def _factory(repository: RedisPublicJwkRepository) -> ASGIClient:
+        """Создаёт ASGI-клиент с подменённой зависимостью."""
         api_app.dependency_overrides[get_collect_jwks] = lambda: CollectJwks(jwks=repository)
 
         return ASGIClient(api_app)
@@ -84,8 +85,8 @@ def jwks_client_factory(api_app: FastAPI) -> JWKSClientFactory:
 def register_client_factory(api_app: FastAPI) -> RegisterClientFactory:
     """Собирает клиент регистрации с указанным сервисом учётных записей.
 
-    Подменяется только сервис: маршрутизация, валидация тела запроса, сборка ответа и
-    обработка ошибок остаются настоящими.
+    Подменяется только сервис: маршрутизация, валидация тела запроса, сборка ответа и обработка
+    ошибок остаются настоящими.
 
     Args:
         api_app (FastAPI): Приложение под тестом.
@@ -95,6 +96,7 @@ def register_client_factory(api_app: FastAPI) -> RegisterClientFactory:
     """
 
     def _factory(service: StubUserService) -> ASGIClient:
+        """Создаёт ASGI-клиент с подменённой зависимостью."""
         api_app.dependency_overrides[get_register_user] = lambda: service
 
         return ASGIClient(api_app)

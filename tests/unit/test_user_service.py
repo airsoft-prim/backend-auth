@@ -86,9 +86,9 @@ def _stored_account(
     Args:
         username (str): Логин хранимой учётной записи.
         email (str): Адрес хранимой учётной записи.
-        pswd_hash (str, optional): Хеш пароля учётной записи. Defaults to "stored-hash".
-        role (UserRole, optional): Системная роль учётной записи. Defaults to `UserRole.USER`.
-        disabled (bool, optional): Признак блокировки. Defaults to False.
+        pswd_hash (str): Хеш пароля учётной записи.
+        role (UserRole): Системная роль учётной записи.
+        disabled (bool): Признак блокировки.
 
     Returns:
         User: Учётная запись с хешем-заглушкой: пароль хранимой записи тест не проверяет.
@@ -112,9 +112,13 @@ async def test_register_stores_account_with_hashed_password(
 ) -> None:
     """Регистрация новой учётной записи.
 
-    Given: логин и адрес свободны,
-    When: гость регистрируется с паролем по политике,
-    Then: учётная запись сохранена, а пароль лежит только в виде Argon2id-хеша.
+    Given: логин и адрес свободны, When: гость регистрируется с паролем по политике, Then: учётная
+    запись сохранена, а пароль лежит только в виде Argon2id-хеша.
+
+    Args:
+        register_user (RegisterUser): Сценарий регистрации через репозиторий текущего теста.
+        repository (InMemoryUserRepository): Репозиторий публичных JWK для подмены зависимости.
+        password_hash (PasswordHash): Хешер паролей Argon2, используемый приложением.
     """
     # Когда
     await register_user(username=USERNAME, email=EMAIL, password=PASSWORD)
@@ -136,9 +140,12 @@ async def test_register_rejects_login_that_is_taken(
 ) -> None:
     """Занятый логин.
 
-    Given: логин уже зарегистрирован,
-    When: гость регистрируется с тем же логином,
-    Then: сервис отказывает и не сохраняет вторую учётную запись.
+    Given: логин уже зарегистрирован, When: гость регистрируется с тем же логином, Then: сервис
+    отказывает и не сохраняет вторую учётную запись.
+
+    Args:
+        register_user (RegisterUser): Сценарий регистрации через репозиторий текущего теста.
+        repository (InMemoryUserRepository): Репозиторий публичных JWK для подмены зависимости.
     """
     # Дано
     repository.users.append(_stored_account())
@@ -156,9 +163,12 @@ async def test_register_rejects_email_that_is_taken_in_any_case(
 ) -> None:
     """Занятый адрес в другом регистре.
 
-    Given: адрес уже зарегистрирован в нижнем регистре,
-    When: гость регистрируется с тем же адресом в верхнем регистре,
-    Then: сервис отказывает: адреса сравниваются без учёта регистра.
+    Given: адрес уже зарегистрирован в нижнем регистре, When: гость регистрируется с тем же адресом
+    в верхнем регистре, Then: сервис отказывает: адреса сравниваются без учёта регистра.
+
+    Args:
+        register_user (RegisterUser): Сценарий регистрации через репозиторий текущего теста.
+        repository (InMemoryUserRepository): Репозиторий публичных JWK для подмены зависимости.
     """
     # Дано
     repository.users.append(_stored_account())
@@ -176,9 +186,12 @@ async def test_register_keeps_logins_case_sensitive(
 ) -> None:
     """Логин в другом регистре.
 
-    Given: занят логин `Stalker_2010`,
-    When: гость регистрируется с логином `stalker_2010`,
-    Then: регистрация проходит: логины уникальны регистрозависимо.
+    Given: занят логин `Stalker_2010`, When: гость регистрируется с логином `stalker_2010`, Then:
+    регистрация проходит: логины уникальны регистрозависимо.
+
+    Args:
+        register_user (RegisterUser): Сценарий регистрации через репозиторий текущего теста.
+        repository (InMemoryUserRepository): Репозиторий публичных JWK для подмены зависимости.
     """
     # Дано
     repository.users.append(
@@ -198,9 +211,12 @@ async def test_get_account_returns_stored_user(
 ) -> None:
     """Получение учётной записи по идентификатору.
 
-    Given: учётная запись сохранена в репозитории,
-    When: сервис запрашивает её по Id из токена,
+    Given: учётная запись сохранена в репозитории, When: сервис запрашивает её по Id из токена,
     Then: возвращается та же учётная запись.
+
+    Args:
+        get_user (GetUser): Сценарий чтения учётной записи через тестовый репозиторий.
+        repository (InMemoryUserRepository): Репозиторий публичных JWK для подмены зависимости.
     """
     # Дано
     account = _stored_account()
@@ -216,9 +232,11 @@ async def test_get_account_returns_stored_user(
 async def test_get_account_rejects_unknown_user(get_user: GetUser) -> None:
     """Получение несуществующей учётной записи.
 
-    Given: учётной записи с таким Id нет в репозитории,
-    When: сервис запрашивает её по Id из токена,
-    Then: сервис сообщает об ошибке идентификации.
+    Given: учётной записи с таким Id нет в репозитории, When: сервис запрашивает её по Id из
+    токена, Then: сервис сообщает об ошибке идентификации.
+
+    Args:
+        get_user (GetUser): Сценарий чтения учётной записи через тестовый репозиторий.
     """
     # Когда / Тогда
     with pytest.raises(UserIdentificationError, match="User not found"):
@@ -232,9 +250,13 @@ async def test_login_returns_user_id_and_role(
 ) -> None:
     """Успешный вход.
 
-    Given: учётная запись с паролем и ролью `moderator`,
-    When: пользователь входит с верными данными,
-    Then: сервис возвращает Id пользователя и его системную роль.
+    Given: учётная запись с паролем и ролью `moderator`, When: пользователь входит с верными
+    данными, Then: сервис возвращает Id пользователя и его системную роль.
+
+    Args:
+        login_user (LoginUser): Сценарий входа через тестовый репозиторий учётных записей.
+        repository (InMemoryUserRepository): Репозиторий публичных JWK для подмены зависимости.
+        password_hash (PasswordHash): Хешер паролей Argon2, используемый приложением.
     """
     # Дано
     repository.users.append(
@@ -255,9 +277,11 @@ async def test_login_returns_user_id_and_role(
 async def test_login_rejects_unknown_user(login_user: LoginUser) -> None:
     """Вход с несуществующим логином.
 
-    Given: учётной записи с таким логином нет,
-    When: пользователь пытается войти,
-    Then: сервис сообщает об ошибке идентификации.
+    Given: учётной записи с таким логином нет, When: пользователь пытается войти, Then: сервис
+    сообщает об ошибке идентификации.
+
+    Args:
+        login_user (LoginUser): Сценарий входа через тестовый репозиторий учётных записей.
     """
     # Когда / Тогда
     with pytest.raises(UserIdentificationError, match="User not found"):
@@ -271,9 +295,13 @@ async def test_login_rejects_wrong_password(
 ) -> None:
     """Вход с неверным паролем.
 
-    Given: учётная запись существует, но пароль не совпадает,
-    When: пользователь пытается войти,
+    Given: учётная запись существует, но пароль не совпадает, When: пользователь пытается войти,
     Then: сервис сообщает об ошибке аутентификации.
+
+    Args:
+        login_user (LoginUser): Сценарий входа через тестовый репозиторий учётных записей.
+        repository (InMemoryUserRepository): Репозиторий публичных JWK для подмены зависимости.
+        password_hash (PasswordHash): Хешер паролей Argon2, используемый приложением.
     """
     # Дано
     repository.users.append(_stored_account(pswd_hash=password_hash.hash(PASSWORD)))
@@ -290,9 +318,13 @@ async def test_login_rejects_disabled_user(
 ) -> None:
     """Вход заблокированного пользователя.
 
-    Given: учётная запись заблокирована, а пароль верный,
-    When: пользователь пытается войти,
-    Then: сервис не раскрывает блокировку и отвечает как на несуществующий логин.
+    Given: учётная запись заблокирована, а пароль верный, When: пользователь пытается войти, Then:
+    сервис не раскрывает блокировку и отвечает как на несуществующий логин.
+
+    Args:
+        login_user (LoginUser): Сценарий входа через тестовый репозиторий учётных записей.
+        repository (InMemoryUserRepository): Репозиторий публичных JWK для подмены зависимости.
+        password_hash (PasswordHash): Хешер паролей Argon2, используемый приложением.
     """
     # Дано
     repository.users.append(

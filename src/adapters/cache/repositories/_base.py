@@ -11,41 +11,46 @@ type KeyStub = Literal["*"]
 
 
 class RedisRepository(Repository):
-    """Репозиторий для взаимодействия с данными в Redis."""
+    """Репозиторий для взаимодействия с данными в `Redis`.
+
+    Хранит переданный клиент `Redis` и формирует ключи по шаблону подкласса. Незаполненные
+    параметры шаблона заменяются glob-маской *.
+    """
 
     _key_template: Template
 
     @property
     def key_template(self) -> Template:
-        """Шаблон ключа Redis для репозитория."""
+        """Шаблон ключа `Redis` для репозитория."""
         return self._key_template
 
     def __init__(self, client: Redis) -> None:
         """Инициализация класса.
 
         Args:
-            client (Redis): Асинхронный клиент Redis.
+            client (Redis): Асинхронный клиент `Redis`.
         """
         self.client = client
 
     def compile_template(self, values: Mapping[str, Any | KeyStub]) -> str:
-        """Собирает ключ Redis из его шаблона, указанного в репозитории.
+        """Собирает ключ `Redis` из его шаблона, указанного в репозитории.
 
-        Если значений не хватает для полноценной компиляции шаблона, то
-        оставшиеся параметры заполняются KeyStub. KeyStub также может быть
-        передан в качестве значения для шаблонного параметра.
+        Если значений не хватает для полноценной компиляции шаблона, то оставшиеся параметры
+        заполняются `KeyStub`. `KeyStub` также может быть передан в качестве значения для
+        шаблонного параметра.
 
         Args:
             values (Mapping[str, Any | KeyStub]): Значения для заполнения.
 
         Returns:
-            str: Заполненный шаблон, готовый ключ Redis.
+            str: Заполненный шаблон, готовый ключ `Redis`.
         """
         # Первый проход подставляет известные значения, остальные оставляет текстом.
         filled = Template(self._key_template.safe_substitute(**values))
 
         def _replacer(match: re.Match[str]) -> str:
             # Группы "named" и "braced" взаимоисключающие: $name и ${name}.
+            """Заменяет незаполненный параметр шаблона ключа маской *."""
             name = match.group("named") or match.group("braced")
             if name:
                 # Значения не было — подставляем "*", glob-маску Redis.

@@ -8,7 +8,7 @@ from ._base import RedisRepository
 
 
 class RedisPublicJwkRepository(RedisRepository):
-    """Репозитория для взаимодействия с публичными JWK ключами в Redis.
+    """Репозитория для взаимодействия с публичными JWK ключами в `Redis`.
 
     На каждый ключ хранится одно значение — публичный JWK в JSON по RFC 7517.
     """
@@ -21,9 +21,6 @@ class RedisPublicJwkRepository(RedisRepository):
         Args:
             kid (str): Идентификатор ключа (`kid`).
             jwk (JsonWebKey): Публичный JWK.
-
-        Raises:
-            RepositoryError: Если обращение к Redis завершилось ошибкой.
         """
         key = self.compile_template({"kid": kid})
         payload = json.dumps(jwk)
@@ -37,11 +34,8 @@ class RedisPublicJwkRepository(RedisRepository):
         Args:
             kid (str): Идентификатор ключа (`kid`).
 
-        Raises:
-            RepositoryError: Если обращение к Redis завершилось ошибкой.
-
         Returns:
-            JsonWebKey | None: Публичный JWK или None, если ключ не опубликован.
+            JsonWebKey | None: Публичный JWK или `None`, если ключ не опубликован.
         """
         key = self.compile_template({"kid": kid})
 
@@ -52,9 +46,6 @@ class RedisPublicJwkRepository(RedisRepository):
 
     async def acquire_all(self) -> Sequence[JsonWebKey]:
         """Возвращает все опубликованные публичные JWK.
-
-        Raises:
-            RepositoryError: Если обращение к Redis завершилось ошибкой.
 
         Returns:
             Sequence[JsonWebKey]: Публичные JWK из кеша.
@@ -71,17 +62,14 @@ class RedisPublicJwkRepository(RedisRepository):
     async def expire_rotated(self, generated_kid: str, ttl: int) -> None:
         """Назначает время жизни публичным JWK, чьи приватные пары были ротированы.
 
-        Затрагиваются все опубликованные ключи, кроме только что созданного, у которых ещё
-        нет TTL: выданные ранее токены остаются проверяемыми до истечения `ttl`, а ключи
-        прошлых ротаций не получают срок заново на каждой ротации.
+        Затрагиваются все опубликованные ключи, кроме только что созданного, у которых ещё нет TTL:
+        выданные ранее токены остаются проверяемыми до истечения `ttl`, а ключи прошлых ротаций не
+        получают срок заново на каждой ротации.
 
         Args:
             generated_kid (str): Идентификатор (`kid`) нового ключа — его время жизни не
                 ограничивается.
             ttl (int): Время жизни прошлых ключей в секундах.
-
-        Raises:
-            RepositoryError: Если обращение к Redis завершилось ошибкой.
         """
         # Пустые значения шаблона компилируются в glob-маску: jwk:*.
         pattern = self.compile_template({})

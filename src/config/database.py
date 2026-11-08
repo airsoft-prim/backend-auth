@@ -9,16 +9,26 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class PathVariadicPostgresDsn(PostgresDsn):
-    """Класс PostgresDsn, способный менять путь (имя БД). Необходим для корректной и
-    удобной смены имени БД при создании тестовых сессий. При смене пути возвращается
-    копия объекта с изменёнными параметрами.
+    """`DSN` PostgreSQL с заменой имени базы данных.
+
+    Создаёт копию `DSN` с другим именем базы данных, сохраняя схему, учётные данные, хосты и
+    параметры URL. Используется для изоляции тестовых баз без изменения исходного подключения.
     """
 
     def change_path(self, value: str) -> PathVariadicPostgresDsn:
-        """Копия DSN с другим именем БД.
+        """Копия `DSN` с другим именем БД.
 
-        Ведущие и хвостовые слэши отбрасываются. Query-параметры,
-        fragment, учётные данные и хосты сохраняются как были.
+        Ведущие и хвостовые слэши отбрасываются. Query-параметры, fragment, учётные данные и хосты
+        сохраняются как были.
+
+        Args:
+            value (str): Новое имя базы данных без окружающих пробелов и слешей.
+
+        Returns:
+            PathVariadicPostgresDsn: Новый `DSN` с заменённым именем базы данных.
+
+        Raises:
+            ValueError: Имя базы данных не соответствует допустимому формату.
         """
         # Postgres ограничивает идентификатор 63 байтами (NAMEDATALEN - 1).
         # Пробелы и спецсимволы отклоняем явно: без экранирования они молча
@@ -38,13 +48,17 @@ class PathVariadicPostgresDsn(PostgresDsn):
 
     @property
     def dbname(self) -> str | None:
-        """Имя БД без ведущего слэша. `None` - если БД в DSN не указана."""
+        """Имя БД без ведущего слэша. `None` - если БД в `DSN` не указана."""
         name = (self.path or "").lstrip("/")
         return name or None
 
 
 class PostgresConfiguration(BaseSettings):
-    """Секция конфигурации базы данных."""
+    """Секция конфигурации базы данных.
+
+    Читает переменные с префиксом `DATABASE_` и формирует `DSN` для драйвера asyncpg. Проверяет
+    диапазон порта; имя базы доступно для замены через `PathVariadicPostgresDsn`.
+    """
 
     model_config = SettingsConfigDict(env_prefix="DATABASE_")
 
@@ -56,7 +70,7 @@ class PostgresConfiguration(BaseSettings):
 
     @property
     def DSN(self) -> PathVariadicPostgresDsn:  # noqa: N802
-        """Возвращает провалидированный DSN PostgreSQL."""
+        """Возвращает провалидированный `DSN` PostgreSQL."""
         return PathVariadicPostgresDsn.build(
             scheme="postgresql+asyncpg",
             host=self.HOST,

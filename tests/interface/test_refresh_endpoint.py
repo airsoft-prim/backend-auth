@@ -1,4 +1,4 @@
-"""Тесты HTTP-контракта обновления access-токена."""
+"""Тесты HTTP-контракта обновления `access`-токена."""
 
 from fastapi import FastAPI, status
 import jwt
@@ -72,15 +72,15 @@ def refresh_client(  # noqa: PLR0913, PLR0917
 
     Args:
         api_app (FastAPI): Приложение под тестом.
-        verify_refresh_token (VerifyToken[RefreshTokenClaims]): Use case проверки
-            refresh-токенов.
-        sign_token (SignToken): Use case подписи access-токенов.
-        sign_refresh_token (SignToken): Use case подписи refresh-токенов.
-        blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий
-            отозванных токенов поверх подмены Redis.
-        revoked_sessions_repository (RedisRevokedSessionsRepository): Репозиторий
-            отозванных сессий поверх подмены Redis.
-        session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены Redis.
+        verify_refresh_token (VerifyToken[RefreshTokenClaims]): Use case проверки `refresh`-
+            токенов.
+        sign_token (SignToken): Use case подписи `access`-токенов.
+        sign_refresh_token (SignToken): Use case подписи `refresh`-токенов.
+        blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий отозванных
+            токенов поверх подмены `Redis`.
+        revoked_sessions_repository (RedisRevokedSessionsRepository): Репозиторий отозванных сессий
+            поверх подмены `Redis`.
+        session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены `Redis`.
         user_repository (InMemoryUserRepository): Подмена репозитория учётных записей.
 
     Returns:
@@ -105,14 +105,14 @@ async def _issue_refresh_token(
     rotate_jwk: RotateJwk,
     sign_refresh_token: SignToken,
 ) -> str:
-    """Публикует ключ и выпускает refresh-токен для обновления.
+    """Публикует ключ и выпускает `refresh`-токен для обновления.
 
     Args:
         rotate_jwk (RotateJwk): Use case генерации и публикации ключей.
-        sign_refresh_token (SignToken): Use case подписи refresh-токенов.
+        sign_refresh_token (SignToken): Use case подписи `refresh`-токенов.
 
     Returns:
-        str: Подписанный refresh-токен.
+        str: Подписанный `refresh`-токен.
     """
     await rotate_jwk(TTL_SECONDS)
     token, _ = await sign_refresh_token(USER_ID, SID)
@@ -121,7 +121,7 @@ async def _issue_refresh_token(
 
 
 def _cookie(token: str) -> dict[str, str]:
-    """Собирает заголовок cookie с refresh-токеном.
+    """Собирает заголовок cookie с `refresh`-токеном.
 
     Args:
         token (str): Refresh-токен.
@@ -133,7 +133,7 @@ def _cookie(token: str) -> dict[str, str]:
 
 
 def _payload(token: str) -> dict[str, object]:
-    """Возвращает claims токена без проверки подписи.
+    """Возвращает `claims` токена без проверки подписи.
 
     Args:
         token (str): Подписанный JWT.
@@ -149,11 +149,16 @@ async def test_refresh_returns_new_access_token(
     rotate_jwk: RotateJwk,
     sign_refresh_token: SignToken,
 ) -> None:
-    """Обновление access-токена по refresh-токену.
+    """Обновление `access`-токена по `refresh`-токену.
 
-    Given: действующий refresh-токен в cookie,
-    When: клиент запрашивает новый access-токен,
-    Then: приходит 200 с новым access-токеном той же сессии и ролью из БД.
+    Given: действующий `refresh`-токен в cookie, When: клиент запрашивает новый `access`-токен,
+    Then: приходит `200` с новым `access`-токеном той же сессии и ролью из БД.
+
+    Args:
+        refresh_client (ASGIClient): ASGI-клиент обновления токенов с тестовыми зависимостями.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
+        sign_refresh_token (SignToken): Сценарий подписи `refresh`-токена ключом тестового
+            хранилища.
     """
     # Дано
     token = await _issue_refresh_token(rotate_jwk, sign_refresh_token)
@@ -182,11 +187,16 @@ async def test_refresh_rotates_refresh_token(
     rotate_jwk: RotateJwk,
     sign_refresh_token: SignToken,
 ) -> None:
-    """Ротация refresh-токена.
+    """Ротация `refresh`-токена.
 
-    Given: действующий refresh-токен в cookie,
-    When: клиент обновляет access-токен,
-    Then: старый refresh-токен отзывается и повторное обновление с ним отклоняется.
+    Given: действующий `refresh`-токен в cookie, When: клиент обновляет `access`-токен, Then:
+    старый `refresh`-токен отзывается и повторное обновление с ним отклоняется.
+
+    Args:
+        refresh_client (ASGIClient): ASGI-клиент обновления токенов с тестовыми зависимостями.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
+        sign_refresh_token (SignToken): Сценарий подписи `refresh`-токена ключом тестового
+            хранилища.
     """
     # Дано
     token = await _issue_refresh_token(rotate_jwk, sign_refresh_token)
@@ -207,11 +217,17 @@ async def test_refresh_reuse_revokes_session(
     sign_refresh_token: SignToken,
     redis_double: InMemoryRedis,
 ) -> None:
-    """Повторное использование refresh-токена отзывает сессию.
+    """Повторное использование `refresh`-токена отзывает сессию.
 
-    Given: refresh-токен уже ротирован один раз,
-    When: тот же токен предъявляется повторно,
-    Then: приходит 403, а сессия (`sid`) помечается отозванной.
+    Given: `refresh`-токен уже ротирован один раз, When: тот же токен предъявляется повторно, Then:
+    приходит `403`, а сессия (`sid`) помечается отозванной.
+
+    Args:
+        refresh_client (ASGIClient): ASGI-клиент обновления токенов с тестовыми зависимостями.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
+        sign_refresh_token (SignToken): Сценарий подписи `refresh`-токена ключом тестового
+            хранилища.
+        redis_double (InMemoryRedis): Подмена `Redis` с хранилищем значений и TTL в памяти.
     """
     # Дано
     token = await _issue_refresh_token(rotate_jwk, sign_refresh_token)
@@ -226,11 +242,13 @@ async def test_refresh_reuse_revokes_session(
 
 
 async def test_refresh_requires_refresh_cookie(refresh_client: ASGIClient) -> None:
-    """Обновление без refresh-токена в cookie.
+    """Обновление без `refresh`-токена в cookie.
 
-    Given: запрос без cookie с refresh-токеном,
-    When: клиент запрашивает новый access-токен,
-    Then: приходит 401: сессию не идентифицировать.
+    Given: запрос без cookie с `refresh`-токеном, When: клиент запрашивает новый `access`-токен,
+    Then: приходит `401`: сессию не идентифицировать.
+
+    Args:
+        refresh_client (ASGIClient): ASGI-клиент обновления токенов с тестовыми зависимостями.
     """
     # Когда
     response = await refresh_client.post(REFRESH_PATH)
@@ -240,11 +258,13 @@ async def test_refresh_requires_refresh_cookie(refresh_client: ASGIClient) -> No
 
 
 async def test_refresh_rejects_invalid_token(refresh_client: ASGIClient) -> None:
-    """Обновление с невалидным refresh-токеном.
+    """Обновление с невалидным `refresh`-токеном.
 
-    Given: в cookie передана строка, не являющаяся JWT,
-    When: клиент запрашивает новый access-токен,
-    Then: приходит 403: токен не проходит проверку.
+    Given: в cookie передана строка, не являющаяся JWT, When: клиент запрашивает новый `access`-
+    токен, Then: приходит `403`: токен не проходит проверку.
+
+    Args:
+        refresh_client (ASGIClient): ASGI-клиент обновления токенов с тестовыми зависимостями.
     """
     # Когда
     response = await refresh_client.post(REFRESH_PATH, headers=_cookie("not-a-jwt"))

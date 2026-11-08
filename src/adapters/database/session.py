@@ -11,7 +11,7 @@ async def get_session() -> AsyncGenerator[AsyncSession]:
     """Возвращает асинхронную сессию подключения к БД.
 
     Yields:
-        AsyncGenerator[AsyncSession]: Асинхронная сессия БД.
+        AsyncSession: Асинхронная сессия БД.
     """
     async with async_session() as session:
         yield session

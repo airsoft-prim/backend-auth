@@ -24,25 +24,29 @@ type RawTokenSigner = Callable[[dict[str, Any], str | None], str]
 
 
 class RotationInterruptedError(Exception):
-    """Сигнал остановки бесконечного цикла ротации в тесте."""
+    """Сигнал остановки бесконечного цикла ротации в тесте.
+
+    Исключение из подмены `asyncio.sleep` завершает цикл после заданного числа ротаций и позволяет
+    тесту проверить собранные задержки.
+    """
 
 
 class RecordingEventLoop:
     """Подмена цикла событий: перехватывает задачу демона, не запуская её.
 
-    Демон ротации использует от цикла только `is_closed` и `create_task`, поэтому
-    подмена повторяет эти вызовы, а поставленную задачу отдаёт тесту для ожидания.
+    Демон ротации использует от цикла только `is_closed` и `create_task`, поэтому подмена повторяет
+    эти вызовы, а поставленную задачу отдаёт тесту для ожидания.
     """
 
     def __init__(self) -> None:
-        """Инициализация подмены без поставленных задач."""
+        """Инициализация класса."""
         self.scheduled: list[Coroutine[Any, Any, None]] = []
 
     def is_closed(self) -> bool:
         """Сообщает, что цикл открыт.
 
         Returns:
-            bool: Всегда False — цикл подмены не закрывается.
+            bool: Всегда `False` — цикл подмены не закрывается.
         """
         return False
 
@@ -58,11 +62,11 @@ class RecordingEventLoop:
 def patch_daemon_sleep(monkeypatch: pytest.MonkeyPatch, *, rotations: int) -> list[float]:
     """Подменяет паузу планировщика ротации и прерывает его цикл.
 
-    Демон ротации работает бесконечно, поэтому заданное число ротаций выполняется, а
-    следующая пауза прерывает цикл: тест проверяет ровно эти ротации.
+    Демон ротации работает бесконечно, поэтому заданное число ротаций выполняется, а следующая
+    пауза прерывает цикл: тест проверяет ровно эти ротации.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): Механизм подмены pytest.
+        monkeypatch (pytest.MonkeyPatch): Механизм подмены `pytest`.
         rotations (int): Число ротаций, которые должны выполниться до прерывания.
 
     Returns:
@@ -71,6 +75,7 @@ def patch_daemon_sleep(monkeypatch: pytest.MonkeyPatch, *, rotations: int) -> li
     delays: list[float] = []
 
     async def _sleep(delay: float) -> None:
+        """Запоминает задержку и прерывает цикл после заданного числа ротаций."""
         delays.append(delay)
 
         if len(delays) > rotations:
@@ -86,18 +91,19 @@ def patch_daemon_sleep(monkeypatch: pytest.MonkeyPatch, *, rotations: int) -> li
 def raw_token_signer(key_store_dir: Path) -> RawTokenSigner:
     """Отдаёт функцию подписи токена приватным ключом сервиса.
 
-    Нужна там, где проверяющий сервис должен получить токен с неверными или
-    неполными claims: обычный сервис выпуска всегда собирает корректный набор.
+    Нужна там, где проверяющий сервис должен получить токен с неверными или неполными `claims`:
+    обычный сервис выпуска всегда собирает корректный набор.
 
     Args:
         key_store_dir (Path): Каталог приватного ключа подписи.
 
     Returns:
-        RawTokenSigner: Функция «claims, kid → подписанный токен»; `kid=None`
-            оставляет заголовок без идентификатора ключа.
+        RawTokenSigner: Функция «`claims`, `kid` → подписанный токен»; `kid=None` оставляет
+            заголовок без идентификатора ключа.
     """
 
     def _sign(claims: dict[str, Any], key_id: str | None) -> str:
+        """Подписывает заданные `claims` приватным ключом тестового хранилища."""
         key_file = key_store_dir / FilePrivateJwkRepository.FILE_NAME
         private_key = serialization.load_pem_private_key(key_file.read_bytes(), password=None)
 

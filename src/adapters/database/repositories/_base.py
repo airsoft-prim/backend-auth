@@ -12,7 +12,11 @@ type EntityID = UUID | int
 
 
 class DatabaseRepository[D: DeclarativeBase](Repository):
-    """Репозиторий для взаимодействия с сущностями в БД."""
+    """Репозиторий для взаимодействия с сущностями в БД.
+
+    Выполняет получение, сохранение и удаление ORM-моделей через переданную `AsyncSession`.
+    Сохранение и удаление фиксируют транзакцию; составные первичные ключи не поддерживаются.
+    """
 
     model: type[D]
 
@@ -27,8 +31,7 @@ class DatabaseRepository[D: DeclarativeBase](Repository):
     # ! Не поддерживает составные ключи
     @staticmethod
     def _id_column(model: type[D]) -> ColumnElement[Any]:
-        """Колонка первичного ключа модели: запросы не зависят
-        от имени и типа колонки первичного ключа.
+        """Возвращает первую колонку первичного ключа модели.
 
         Args:
             model (type[D]): ORM модель сущности.
@@ -45,17 +48,15 @@ class DatabaseRepository[D: DeclarativeBase](Repository):
     async def get(self, id_: Sequence[EntityID]) -> list[D] | None: ...
 
     async def get(self, id_: EntityID | Sequence[EntityID]) -> D | list[D] | None:
-        """Метод получения сущности или списка сущностей из БД
-        по их идентификатору.
+        """Метод получения сущности или списка сущностей из БД по их идентификатору.
 
         Args:
-            id_ (EntityID | Sequence[EntityID]): Идентификатор или список
-                идентификаторов сущностей в БД.
+            id_ (EntityID | Sequence[EntityID]): Идентификатор или список идентификаторов сущностей
+                в БД.
 
         Returns:
-            D | list[D] | None: ORM модель при запросе по одному
-                идентификатору, список моделей - при запросе по списку
-                идентификаторов. None - если записи не найдены.
+            D | list[D] | None: ORM модель при запросе по одному идентификатору, список моделей -
+                при запросе по списку идентификаторов. `None` - если записи не найдены.
         """
         id_column = self._id_column(self.model)
         stmt = select(self.model).where(
@@ -81,8 +82,7 @@ class DatabaseRepository[D: DeclarativeBase](Repository):
         """Метод сохранения сущности или списка сущностей в БД.
 
         Args:
-            entity (D | Sequence[D]): Сущность или список сущностей
-                для сохранения.
+            entity (D | Sequence[D]): Сущность или список сущностей для сохранения.
         """
         if isinstance(entity, Sequence):
             self._session.add_all(entity)
@@ -100,12 +100,11 @@ class DatabaseRepository[D: DeclarativeBase](Repository):
     async def delete(self, id_: Sequence[EntityID]) -> None: ...
 
     async def delete(self, id_: EntityID | Sequence[EntityID]) -> None:
-        """Метод удаления сущности или списка сущностей из БД
-        по их идентификатору.
+        """Метод удаления сущности или списка сущностей из БД по их идентификатору.
 
         Args:
-            entity (EntityID | Sequence[EntityID]): Идентификатор или список
-                идентификаторов сущностей в БД.
+            id_ (EntityID | Sequence[EntityID]): Идентификатор или последовательность
+                идентификаторов ORM-моделей.
         """
         id_column = self._id_column(self.model)
         stmt = delete_(self.model).where(

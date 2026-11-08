@@ -15,7 +15,7 @@ router = APIRouter(prefix="/.well-known", tags=["Служебные метада
 async def get_jwks(
     collect: Annotated[CollectJwks, Depends(get_collect_jwks)],
 ) -> JSONWebKeySet:
-    """Функция получения набора публичных ключей подписи токенов.
+    """Возвращает набор опубликованных публичных ключей подписи.
 
     Args:
         collect (CollectJwks): Use case сбора публичных JWK.

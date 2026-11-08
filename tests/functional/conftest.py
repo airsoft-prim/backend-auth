@@ -20,20 +20,19 @@ type TokenSigner = Callable[[dict[str, Any], str], str]
 
 @pytest.fixture
 def sign_access_token(key_store_dir: Path) -> TokenSigner:
-    """Подписывает access-токен приватным ключом сервиса.
+    """Подписывает `access`-токен приватным ключом сервиса.
 
-    Потребители проверяют такие токены публичным ключом из JWKS. Пока выпуск токенов в
-    сервисе не реализован (`JWTService` — заглушка), подпись собирается в тесте тем же
-    приватным ключом из keyfile, каким её соберёт сервис.
+    Позволяет задать `claims` и `kid` вручную для проверки опубликованного JWKS потребителем.
 
     Args:
         key_store_dir (Path): Каталог приватного ключа подписи.
 
     Returns:
-        TokenSigner: Функция «claims, kid → подписанный токен».
+        TokenSigner: Функция «`claims`, `kid` → подписанный токен».
     """
 
     def _sign(claims: dict[str, Any], key_id: str) -> str:
+        """Подписывает заданные `claims` приватным ключом тестового хранилища."""
         key_file = key_store_dir / FilePrivateJwkRepository.FILE_NAME
         private_key = serialization.load_pem_private_key(key_file.read_bytes(), password=None)
 

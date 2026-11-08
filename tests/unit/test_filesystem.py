@@ -29,9 +29,11 @@ def _file_names(directory: Path) -> list[str]:
 async def test_read_fails_when_file_is_missing(file_system: FileSystem) -> None:
     """Отсутствующий файл.
 
-    Given: в каталоге нет запрошенного файла,
-    When: объект файловой системы читает файл,
-    Then: ошибка отсутствия файла не скрывается — её обрабатывает репозиторий.
+    Given: в каталоге нет запрошенного файла, When: объект файловой системы читает файл, Then:
+    ошибка отсутствия файла не скрывается — её обрабатывает репозиторий.
+
+    Args:
+        file_system (FileSystem): Файловое хранилище во временном каталоге ключа подписи.
     """
     with pytest.raises(FileNotFoundError):
         await file_system.read(FILE_NAME)
@@ -43,9 +45,12 @@ async def test_write_creates_directory_and_file(
 ) -> None:
     """Первая запись в пустой каталог.
 
-    Given: корневого каталога ещё нет,
-    When: объект файловой системы записывает файл,
-    Then: каталог и файл созданы, а содержимое читается обратно.
+    Given: корневого каталога ещё нет, When: объект файловой системы записывает файл, Then: каталог
+    и файл созданы, а содержимое читается обратно.
+
+    Args:
+        file_system (FileSystem): Файловое хранилище во временном каталоге ключа подписи.
+        key_store_dir (Path): Временный каталог приватного ключа подписи.
     """
     await file_system.write(FILE_NAME, PAYLOAD)
 
@@ -59,9 +64,12 @@ async def test_write_replaces_file_without_temporary_leftovers(
 ) -> None:
     """Перезапись файла.
 
-    Given: файл уже записан,
-    When: объект файловой системы записывает новое содержимое,
-    Then: читается новое содержимое, а временные файлы не остаются в каталоге.
+    Given: файл уже записан, When: объект файловой системы записывает новое содержимое, Then:
+    читается новое содержимое, а временные файлы не остаются в каталоге.
+
+    Args:
+        file_system (FileSystem): Файловое хранилище во временном каталоге ключа подписи.
+        key_store_dir (Path): Временный каталог приватного ключа подписи.
     """
     await file_system.write(FILE_NAME, PAYLOAD)
     await file_system.write(FILE_NAME, ROTATED_PAYLOAD)
@@ -77,9 +85,11 @@ async def test_write_restricts_file_permissions(
 ) -> None:
     """Права доступа к записанному файлу.
 
-    Given: файл записан,
-    When: проверяются его права доступа,
-    Then: файл доступен только владельцу.
+    Given: файл записан, When: проверяются его права доступа, Then: файл доступен только владельцу.
+
+    Args:
+        file_system (FileSystem): Файловое хранилище во временном каталоге ключа подписи.
+        key_store_dir (Path): Временный каталог приватного ключа подписи.
     """
     await file_system.write(FILE_NAME, PAYLOAD)
 
@@ -91,9 +101,11 @@ async def test_write_restricts_file_permissions(
 async def test_read_rejects_path_outside_root(file_system: FileSystem) -> None:
     """Путь за пределы корневого каталога на чтении.
 
-    Given: имя файла пытается выйти из корневого каталога,
-    When: объект файловой системы читает файл,
-    Then: обращение отклоняется до работы с диском.
+    Given: имя файла пытается выйти из корневого каталога, When: объект файловой системы читает
+    файл, Then: обращение отклоняется до работы с диском.
+
+    Args:
+        file_system (FileSystem): Файловое хранилище во временном каталоге ключа подписи.
     """
     with pytest.raises(ValueError, match="escapes the root directory"):
         await file_system.read("../escaped.pem")
@@ -102,9 +114,11 @@ async def test_read_rejects_path_outside_root(file_system: FileSystem) -> None:
 async def test_write_rejects_path_outside_root(file_system: FileSystem) -> None:
     """Путь за пределы корневого каталога на записи.
 
-    Given: имя файла пытается выйти из корневого каталога,
-    When: объект файловой системы пишет файл,
-    Then: запись отклоняется до работы с диском.
+    Given: имя файла пытается выйти из корневого каталога, When: объект файловой системы пишет
+    файл, Then: запись отклоняется до работы с диском.
+
+    Args:
+        file_system (FileSystem): Файловое хранилище во временном каталоге ключа подписи.
     """
     with pytest.raises(ValueError, match="escapes the root directory"):
         await file_system.write("../escaped.pem", PAYLOAD)

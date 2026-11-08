@@ -1,8 +1,8 @@
 """Клиент ASGI-приложения без внешних зависимостей.
 
-`fastapi.testclient` требует httpx, которого нет в зависимостях проекта, поэтому
-HTTP-контракт проверяется вызовом ASGI-приложения напрямую: тот же путь проходят
-маршрутизация, валидация схемы ответа и обработка ошибок.
+`fastapi.testclient` требует httpx, которого нет в зависимостях проекта, поэтому HTTP-контракт
+проверяется вызовом ASGI-приложения напрямую: тот же путь проходят маршрутизация, валидация схемы
+ответа и обработка ошибок.
 """
 
 from collections.abc import Awaitable, Callable, Mapping, MutableMapping, Sequence
@@ -21,7 +21,11 @@ __all__ = ["ASGIClient", "ASGIResponse"]
 
 @dataclass(frozen=True, slots=True)
 class ASGIResponse:
-    """Ответ ASGI-приложения."""
+    """Ответ ASGI-приложения.
+
+    Хранит код состояния, заголовки и байты тела. Свойство `payload` разбирает тело как JSON по
+    запросу теста.
+    """
 
     status_code: int
     headers: Mapping[str, str]
@@ -29,19 +33,19 @@ class ASGIResponse:
 
     @property
     def payload(self) -> Any:
-        """Тело ответа, разобранное как JSON.
-
-        Returns:
-            Any: Данные ответа.
-        """
+        """Тело ответа, разобранное как JSON."""
         return json.loads(self.body)
 
 
 class ASGIClient:
-    """Клиент приложения: обёртка над вызовом ASGI."""
+    """Клиент приложения: обёртка над вызовом ASGI.
+
+    Вызывает ASGI-приложение напрямую и собирает сообщения ответа без httpx. Поддерживает JSON-
+    тело запроса и заголовки; `lifespan` автоматически не запускает.
+    """
 
     def __init__(self, app: ASGIApp) -> None:
-        """Инициализация клиента.
+        """Инициализация класса.
 
         Args:
             app (ASGIApp): ASGI-приложение.
@@ -58,8 +62,7 @@ class ASGIClient:
 
         Args:
             path (str): Путь запроса.
-            headers (Mapping[str, str] | None, optional): Дополнительные заголовки
-                запроса. Defaults to None.
+            headers (Mapping[str, str] | None): Дополнительные заголовки запроса.
 
         Returns:
             ASGIResponse: Ответ приложения.
@@ -77,10 +80,9 @@ class ASGIClient:
 
         Args:
             path (str): Путь запроса.
-            payload (Any | None, optional): Тело запроса: данные, сериализуемые в JSON.
-                None — запрос без тела. Defaults to None.
-            headers (Mapping[str, str] | None, optional): Дополнительные заголовки
-                запроса. Defaults to None.
+            payload (Any | None): Тело запроса: данные, сериализуемые в JSON. `None` — запрос без
+                тела.
+            headers (Mapping[str, str] | None): Дополнительные заголовки запроса.
 
         Returns:
             ASGIResponse: Ответ приложения.
@@ -100,13 +102,15 @@ class ASGIClient:
         Args:
             method (str): HTTP-метод.
             path (str): Путь запроса.
-            payload (Any | None, optional): Тело запроса: данные, сериализуемые в JSON.
-                None — запрос без тела. Defaults to None.
-            headers (Mapping[str, str] | None, optional): Дополнительные заголовки
-                запроса. Defaults to None.
+            payload (Any | None): Тело запроса: данные, сериализуемые в JSON. `None` — запрос без
+                тела.
+            headers (Mapping[str, str] | None): Дополнительные заголовки запроса.
 
         Returns:
             ASGIResponse: Ответ приложения.
+
+        Raises:
+            Exception: Приложение выбросило исключение до отправки ответа.
         """
         messages: list[ASGIMessage] = []
         body = b"" if payload is None else json.dumps(payload).encode()
@@ -121,9 +125,19 @@ class ASGIClient:
             )
 
         async def receive() -> ASGIMessage:
+            """Возвращает ASGI-сообщение с телом HTTP-запроса.
+
+            Returns:
+                ASGIMessage: Сообщение `http.request` с полным телом запроса.
+            """
             return {"type": "http.request", "body": body, "more_body": False}
 
         async def send(message: ASGIMessage) -> None:
+            """Добавляет сообщение ASGI-ответа в буфер клиента.
+
+            Args:
+                message (ASGIMessage): Сообщение ASGI-приложения.
+            """
             messages.append(message)
 
         scope: ASGIMessage = {
@@ -156,11 +170,11 @@ class ASGIClient:
         Args:
             messages (Sequence[ASGIMessage]): Сообщения, отправленные приложением.
 
-        Raises:
-            RuntimeError: Приложение не отправило ответ.
-
         Returns:
             ASGIResponse: Код состояния, заголовки и тело ответа.
+
+        Raises:
+            RuntimeError: Приложение не отправило ответ.
         """
         starts = [message for message in messages if message["type"] == "http.response.start"]
         bodies = [

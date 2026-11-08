@@ -15,10 +15,10 @@ router = APIRouter(prefix="/health", tags=["Состояние приложен�
 
 @router.get("/liveness", **LIVENESS_DOCS)
 async def liveness_healthcheck() -> PlainTextResponse:
-    """Функция проверки доступности приложения.
+    """Подтверждает доступность HTTP-процесса без проверки хранилищ.
 
     Returns:
-        PlainTextResponse: Пустой ответ без тела.
+        PlainTextResponse: Пустой ответ `204`.
     """
     logger.success("Application healthy.")
 
@@ -27,10 +27,13 @@ async def liveness_healthcheck() -> PlainTextResponse:
 
 @router.get("/readiness", **READINESS_DOCS)
 async def readiness_healthcheck() -> PlainTextResponse:
-    """Функция проверки готовности приложения.
+    """Проверяет готовность PostgreSQL и `Redis` к запросам.
+
+    Последовательно выполняет SELECT `1` и `Redis` PING. При ошибке любой проверки возвращает
+    `503`; при успешных проверках — `204`.
 
     Returns:
-        PlainTextResponse: Пустой ответ без тела.
+        PlainTextResponse: Пустой ответ `204` или `503`.
     """
     try:
         async with engine.connect() as conn:

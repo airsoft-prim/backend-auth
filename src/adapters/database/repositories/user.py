@@ -60,8 +60,8 @@ def _user_to_model(user: User) -> UserModel:
 class SqlAlchemyUserRepository(Repository):
     """Репозиторий учётных записей поверх PostgreSQL.
 
-    Адаптер порта `UserRepository`: доменная сущность `User` отдаётся наружу,
-    а в БД ходит ORM-модель `UserModel`.
+    Адаптер порта `UserRepository`: доменная сущность `User` отдаётся наружу, а в БД ходит ORM-
+    модель `UserModel`.
     """
 
     def __init__(self, session: AsyncSession) -> None:
@@ -78,11 +78,8 @@ class SqlAlchemyUserRepository(Repository):
         Args:
             user_id (int): Идентификатор учётной записи.
 
-        Raises:
-            RepositoryError: Если обращение к БД завершилось ошибкой.
-
         Returns:
-            User | None: Учётная запись или None, если её нет.
+            User | None: Учётная запись или `None`, если её нет.
         """
         model = await self._session.get(UserModel, user_id)
 
@@ -91,17 +88,14 @@ class SqlAlchemyUserRepository(Repository):
     async def get_by_username(self, username: str) -> User | None:
         """Возвращает учётную запись по логину.
 
-        Логин уникален регистрозависимо (`UNIQUE` по `username`), поэтому и поиск
-        точный: `docs/DOMAIN.md` §7.2.
+        Логин уникален регистрозависимо (`UNIQUE` по `username`), поэтому и поиск точный:
+        `docs/DOMAIN.md` §7.2.
 
         Args:
             username (str): Логин учётной записи.
 
-        Raises:
-            RepositoryError: Если обращение к БД завершилось ошибкой.
-
         Returns:
-            User | None: Учётная запись или None, если логин ещё свободен.
+            User | None: Учётная запись или `None`, если логин ещё свободен.
         """
         statement: Select[tuple[UserModel]] = select(UserModel).where(
             UserModel.username == username
@@ -112,17 +106,14 @@ class SqlAlchemyUserRepository(Repository):
     async def get_by_email(self, email: str) -> User | None:
         """Возвращает учётную запись по адресу электронной почты.
 
-        Регистр адреса не учитывается — как и уникальность email в БД, которую держит
+        Регистр адреса не учитывается — как и уникальность `email` в БД, которую держит
         функциональный индекс по `lower(email)`.
 
         Args:
             email (str): Адрес электронной почты учётной записи.
 
-        Raises:
-            RepositoryError: Если обращение к БД завершилось ошибкой.
-
         Returns:
-            User | None: Учётная запись или None, если адрес ещё свободен.
+            User | None: Учётная запись или `None`, если адрес ещё свободен.
         """
         statement: Select[tuple[UserModel]] = select(UserModel).where(
             func.lower(UserModel.email) == email.lower()
@@ -136,9 +127,6 @@ class SqlAlchemyUserRepository(Repository):
 
         Args:
             user (User): Учётная запись для сохранения.
-
-        Raises:
-            RepositoryError: Если обращение к БД завершилось ошибкой.
         """
         self._session.add(_user_to_model(user))
 
@@ -151,11 +139,8 @@ class SqlAlchemyUserRepository(Repository):
         Args:
             statement (Select[tuple[UserModel]]): Запрос выборки учётной записи.
 
-        Raises:
-            RepositoryError: Если обращение к БД завершилось ошибкой.
-
         Returns:
-            User | None: Найденная учётная запись или None, если её нет.
+            User | None: Найденная учётная запись или `None`, если её нет.
         """
         with self._as_repository_error("User getting error."):
             result = await self._session.execute(statement)

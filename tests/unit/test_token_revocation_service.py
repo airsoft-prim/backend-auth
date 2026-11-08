@@ -27,7 +27,7 @@ TTL_SECONDS = 3600
 
 
 def _claims(*, expires_at: int) -> AccessTokenClaims:
-    """Собирает claims токена для проверок.
+    """Собирает `claims` токена для проверок.
 
     Args:
         expires_at (int): Момент истечения токена в секундах Unix epoch.
@@ -64,9 +64,13 @@ async def test_revoke_stores_token_until_it_expires(
 ) -> None:
     """Отзыв действующего токена.
 
-    Given: сервис отзыва и действующий access-токен,
-    When: токен отзывается при выходе,
-    Then: в Redis появляется запись по `jti` с TTL, не превышающим срок жизни токена.
+    Given: сервис отзыва и действующий `access`-токен, When: токен отзывается при выходе, Then: в
+    `Redis` появляется запись по `jti` с TTL, не превышающим срок жизни токена.
+
+    Args:
+        blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий маркеров отзыва
+            токенов поверх подмены `Redis`.
+        redis_double (InMemoryRedis): Подмена `Redis` с хранилищем значений и TTL в памяти.
     """
     # Дано
     revoke_token = RevokeToken(blacklisted_tokens_repository)
@@ -87,9 +91,13 @@ async def test_revoke_does_not_store_expired_token(
 ) -> None:
     """Отзыв уже истёкшего токена.
 
-    Given: срок действия токена уже истёк,
-    When: сервис пытается отозвать токен,
-    Then: запись не создаётся: проверять отзыв истёкшего токена бессмысленно.
+    Given: срок действия токена уже истёк, When: сервис пытается отозвать токен, Then: запись не
+    создаётся: проверять отзыв истёкшего токена бессмысленно.
+
+    Args:
+        blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий маркеров отзыва
+            токенов поверх подмены `Redis`.
+        redis_double (InMemoryRedis): Подмена `Redis` с хранилищем значений и TTL в памяти.
     """
     # Дано
     revoke_token = RevokeToken(blacklisted_tokens_repository)
@@ -108,9 +116,14 @@ async def test_ensure_active_accepts_token_that_is_not_revoked(
 ) -> None:
     """Проверка действующего токена.
 
-    Given: токен не помечен отозванным,
-    When: сервис проверяет его перед аутентификацией,
-    Then: проверка проходит без ошибки.
+    Given: токен не помечен отозванным, When: сервис проверяет его перед аутентификацией, Then:
+    проверка проходит без ошибки.
+
+    Args:
+        blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий маркеров отзыва
+            токенов поверх подмены `Redis`.
+        revoked_sessions_repository (RedisRevokedSessionsRepository): Репозиторий маркеров отзыва
+            сессий поверх подмены `Redis`.
     """
     # Дано
     ensure_token_active = EnsureTokenActive(
@@ -128,9 +141,14 @@ async def test_ensure_active_rejects_revoked_token(
 ) -> None:
     """Проверка отозванного токена.
 
-    Given: токен уже отозван при выходе,
-    When: сервис проверяет его перед аутентификацией,
-    Then: сервис сообщает, что токен отозван.
+    Given: токен уже отозван при выходе, When: сервис проверяет его перед аутентификацией, Then:
+    сервис сообщает, что токен отозван.
+
+    Args:
+        blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий маркеров отзыва
+            токенов поверх подмены `Redis`.
+        revoked_sessions_repository (RedisRevokedSessionsRepository): Репозиторий маркеров отзыва
+            сессий поверх подмены `Redis`.
     """
     # Дано
     revoke_token = RevokeToken(blacklisted_tokens_repository)
@@ -152,9 +170,14 @@ async def test_revoke_session_stores_session_until_it_expires(
 ) -> None:
     """Отзыв действующей сессии.
 
-    Given: сервис отзыва сессии и действующий refresh-токен,
-    When: сессия отзывается при выходе,
-    Then: в Redis появляется запись по `sid` с TTL, не превышающим срок жизни токена.
+    Given: сервис отзыва сессии и действующий `refresh`-токен, When: сессия отзывается при выходе,
+    Then: в `Redis` появляется запись по `sid` с TTL, не превышающим срок жизни токена.
+
+    Args:
+        revoked_sessions_repository (RedisRevokedSessionsRepository): Репозиторий маркеров отзыва
+            сессий поверх подмены `Redis`.
+        session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены `Redis`.
+        redis_double (InMemoryRedis): Подмена `Redis` с хранилищем значений и TTL в памяти.
     """
     # Дано
     revoke_session = RevokeSession(revoked_sessions_repository, session_repository)
@@ -176,9 +199,14 @@ async def test_revoke_session_does_not_store_expired_session(
 ) -> None:
     """Отзыв уже истёкшей сессии.
 
-    Given: срок действия refresh-токена уже истёк,
-    When: сервис пытается отозвать сессию,
-    Then: запись не создаётся: проверять отзыв истёкшей сессии бессмысленно.
+    Given: срок действия `refresh`-токена уже истёк, When: сервис пытается отозвать сессию, Then:
+    запись не создаётся: проверять отзыв истёкшей сессии бессмысленно.
+
+    Args:
+        revoked_sessions_repository (RedisRevokedSessionsRepository): Репозиторий маркеров отзыва
+            сессий поверх подмены `Redis`.
+        session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены `Redis`.
+        redis_double (InMemoryRedis): Подмена `Redis` с хранилищем значений и TTL в памяти.
     """
     # Дано
     revoke_session = RevokeSession(revoked_sessions_repository, session_repository)
@@ -198,9 +226,15 @@ async def test_ensure_active_rejects_revoked_session(
 ) -> None:
     """Проверка токена отозванной сессии.
 
-    Given: сессия токена отозвана при выходе, а сам `jti` не отозван,
-    When: сервис проверяет токен перед аутентификацией,
-    Then: сервис сообщает, что токен отозван.
+    Given: сессия токена отозвана при выходе, а сам `jti` не отозван, When: сервис проверяет токен
+    перед аутентификацией, Then: сервис сообщает, что токен отозван.
+
+    Args:
+        blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий маркеров отзыва
+            токенов поверх подмены `Redis`.
+        revoked_sessions_repository (RedisRevokedSessionsRepository): Репозиторий маркеров отзыва
+            сессий поверх подмены `Redis`.
+        session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены `Redis`.
     """
     # Дано
     revoke_session = RevokeSession(revoked_sessions_repository, session_repository)
@@ -221,11 +255,18 @@ async def test_rotate_revokes_session_on_refresh_token_reuse(
     session_repository: RedisSessionRepository,
     redis_double: InMemoryRedis,
 ) -> None:
-    """Повторное использование refresh-токена отзывает сессию.
+    """Повторное использование `refresh`-токена отзывает сессию.
 
-    Given: активная сессия и refresh-токен, уже ротированный один раз,
-    When: ротация повторяется с тем же токеном,
-    Then: сессия помечается отозванной до истечения её срока действия.
+    Given: активная сессия и `refresh`-токен, уже ротированный один раз, When: ротация повторяется
+    с тем же токеном, Then: сессия помечается отозванной до истечения её срока действия.
+
+    Args:
+        blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий маркеров отзыва
+            токенов поверх подмены `Redis`.
+        revoked_sessions_repository (RedisRevokedSessionsRepository): Репозиторий маркеров отзыва
+            сессий поверх подмены `Redis`.
+        session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены `Redis`.
+        redis_double (InMemoryRedis): Подмена `Redis` с хранилищем значений и TTL в памяти.
     """
     # Дано
     now = datetime.now(UTC)

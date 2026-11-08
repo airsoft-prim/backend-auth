@@ -15,9 +15,12 @@ async def test_collect_returns_every_published_key(
 ) -> None:
     """Набор публичных ключей подписи.
 
-    Given: в кеше опубликованы два ключа подписи — прошлый и текущий,
-    When: сервис публикации собирает набор,
-    Then: в набор попадают оба ключа.
+    Given: в кеше опубликованы два ключа подписи — прошлый и текущий, When: сервис публикации
+    собирает набор, Then: в набор попадают оба ключа.
+
+    Args:
+        collect_jwks (CollectJwks): Сценарий чтения опубликованных публичных JWK.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
     """
     # Дано
     previous = await rotate_jwk(KEY_TTL_SECONDS)
@@ -35,9 +38,11 @@ async def test_collect_returns_empty_sequence_when_nothing_is_published(
 ) -> None:
     """Пустой набор ключей.
 
-    Given: ни один публичный JWK не опубликован,
-    When: сервис публикации собирает набор,
-    Then: набор пуст — это корректный результат, а не ошибка.
+    Given: ни один публичный JWK не опубликован, When: сервис публикации собирает набор, Then:
+    набор пуст — это корректный результат, а не ошибка.
+
+    Args:
+        collect_jwks (CollectJwks): Сценарий чтения опубликованных публичных JWK.
     """
     # Когда
     keys = await collect_jwks()
@@ -51,9 +56,12 @@ async def test_collect_propagates_cache_failure(
 ) -> None:
     """Отказ кеша публичных ключей.
 
-    Given: Redis с публичными JWK недоступен,
-    When: сервис публикации собирает набор,
-    Then: ошибка кеша не скрывается от вызывающего кода.
+    Given: `Redis` с публичными JWK недоступен, When: сервис публикации собирает набор, Then:
+    ошибка кеша не скрывается от вызывающего кода.
+
+    Args:
+        unavailable_repository (RedisPublicJwkRepository): Репозиторий JWK с подменой недоступного
+            `Redis`.
     """
     # Дано
     collect_jwks = CollectJwks(jwks=unavailable_repository)

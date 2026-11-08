@@ -15,8 +15,8 @@ from ._base import AbstractUseCase
 class CollectJwks(AbstractUseCase):
     """Use case сбора опубликованных публичных JWK.
 
-    Отдаёт набор публичных ключей из кеша, чтобы потребители токенов проверяли подпись
-    офлайн, по ключам из JWKS, и не обращались за этим к сервису на каждый запрос.
+    Отдаёт набор публичных ключей из кеша, чтобы потребители токенов проверяли подпись офлайн, по
+    ключам из JWKS, и не обращались за этим к сервису на каждый запрос.
     """
 
     def __init__(self, jwks: PublicJwkRepository) -> None:
@@ -32,9 +32,6 @@ class CollectJwks(AbstractUseCase):
 
         Returns:
             Sequence[JsonWebKey]: Публичные JWK, доступные для проверки подписи.
-
-        Raises:
-            RepositoryError: Если обращение к Redis завершилось ошибкой.
         """
         return await self._cache.acquire_all()
 
@@ -60,16 +57,18 @@ class RotateJwk(AbstractUseCase):
         self._publick_key = public_keys
 
     async def __call__(self, rotated_ttl: int, *, overwrite: bool = False) -> PyJWK:
-        """Генерирует приватный JWK.
+        """Возвращает публичный JWK текущего ключа подписи.
 
-        Если ключ уже существует, а флаг перезаписи не был передан, то не генерирует новый
-        приватный JWK ключ, а лишь проверяет существование соответствующего ему публичного
-        JWK ключа в Redis.
+        Без `overwrite` использует существующий приватный ключ и при необходимости публикует его
+        публичную часть. При отсутствии ключа или `overwrite=True` создаёт и сохраняет новую пару,
+        публикует публичный JWK и назначает TTL ключам прошлых ротаций.
 
         Args:
-            rotated_ttl (int): Время жизни публичных JWK, чья приватная пара была ротированна.
-            overwrite (bool, optional): Флаг перезаписи ключа, если он уже существует.
-                Defaults to False.
+            rotated_ttl (int): Срок жизни публичных ключей прошлых ротаций в секундах.
+            overwrite (bool): Перезаписывать существующий приватный ключ. По умолчанию `False`.
+
+        Returns:
+            PyJWK: Публичный ключ, соответствующий текущему приватному ключу подписи.
         """
         if (pem := None if overwrite else await self._private_key.acquire()) is not None:
             logger.info("Key file already exists. Generation will be skipped.")
@@ -118,16 +117,16 @@ class RotateJwk(AbstractUseCase):
         return PyJWK.from_dict(obj=jwk_dict)
 
     def _deserialize_private_jwk(self, pem: bytes) -> PyJWK:
-        """Читает приватный JWK из PEM.
+        """Читает приватный JWK из `PEM`.
 
         Args:
-            pem (bytes): Приватный ключ в PEM.
-
-        Raises:
-            ServiceError: Если ключ не на кривой Ed25519.
+            pem (bytes): Приватный ключ в `PEM`.
 
         Returns:
             PyJWK: Приватный ключ из файла.
+
+        Raises:
+            ServiceError: Если ключ не на кривой Ed25519.
         """
         private_key = serialization.load_pem_private_key(pem, password=None)
 
@@ -138,13 +137,13 @@ class RotateJwk(AbstractUseCase):
         return PyJWK.from_dict(key_to_jwk(private_key))
 
     def _serialize_private_jwk(self, jwk: PyJWK) -> bytes:
-        """Сериализует приватный JWK в PEM (PKCS8).
+        """Сериализует приватный JWK в `PEM` (`PKCS8`).
 
         Args:
             jwk (PyJWK): Приватный JWK для записи.
 
         Returns:
-            bytes: Приватный ключ в PEM.
+            bytes: Приватный ключ в `PEM`.
         """
         private_key: Ed25519PrivateKey = jwk.key
         return private_key.private_bytes(
@@ -160,11 +159,11 @@ class RotateJwk(AbstractUseCase):
         Args:
             jwk (PyJWK): JWK с посчитанным `kid`.
 
-        Raises:
-            ServiceError: Если у ключа нет `kid`.
-
         Returns:
             str: `kid` ключа.
+
+        Raises:
+            ServiceError: Если у ключа нет `kid`.
         """
         if (key_id := jwk.key_id) is None:
             msg = "JWK does not contain a key ID."

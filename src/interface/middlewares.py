@@ -18,31 +18,30 @@ from ._utils import CallNext, MiddlewareRecord, MiddlewaresRegistrator
 class RateLimitingMiddleware:
     """Middleware ограничения частоты HTTP-запросов по IP.
 
-    Применяет REQUEST_RATE_LIMIT ко всем HTTP-путям за фиксированное окно
-    REQUEST_RATE_WINDOW в секундах. Счётчики хранятся в памяти процесса
-    и сбрасываются при смене окна; превышение лимита возвращает ответ 429.
+    Применяет `REQUEST_RATE_LIMIT` ко всем HTTP-путям за фиксированное окно `REQUEST_RATE_WINDOW` в
+    секундах. Счётчики хранятся в памяти процесса и сбрасываются при смене окна; превышение лимита
+    возвращает ответ `429`.
     """
 
     def __init__(self) -> None:
-        """Инициаллизация класса."""
+        """Инициализация класса."""
         self._counts: dict[str, int] = {}
         self._window = -1
 
     # TODO: Заменить фиксированное окно на скользящее окно с общим хранилищем Redis.
     async def __call__(self, request: Request, call_next: CallNext) -> Response:
-        """Пропускает запрос в пределах лимита или возвращает ответ 429.
+        """Пропускает запрос в пределах лимита или возвращает ответ `429`.
 
-        Запросы без адреса клиента учитываются под общим ключом unknown.
-        Отклонённые запросы не передаются следующему обработчику.
+        Запросы без адреса клиента учитываются под общим ключом `unknown`. Отклонённые запросы не
+        передаются следующему обработчику.
 
         Args:
             request (Request): HTTP-запрос с адресом клиента для учёта лимита.
             call_next (CallNext): Следующий обработчик HTTP-запроса.
 
         Returns:
-            Response: Ответ следующего обработчика либо ответ 429 с заголовком
-                Retry-After, содержащим время до конца окна в секундах,
-                округлённое вверх.
+            Response: Ответ следующего обработчика либо ответ `429` с заголовком `Retry-After`,
+                содержащим время до конца окна в секундах, округлённое вверх.
         """
 
         now = monotonic()
@@ -64,7 +63,7 @@ class RateLimitingMiddleware:
 
     @staticmethod
     def _block_request(retry_after: int) -> JSONResponse:
-        """Создаёт ответ 429 с заголовком Retry-After в секундах."""
+        """Создаёт ответ `429` с заголовком `Retry-After` в секундах."""
         return JSONResponse(
             {"detail": "Too many requests."},
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -75,9 +74,9 @@ class RateLimitingMiddleware:
 class TraceRequestMiddleware:
     """Middleware трассировки HTTP-запросов по идентификатору.
 
-    Связывает записи логов с идентификатором запроса, сохраняет его в request.state
-    и возвращает в заголовке X-Request-ID. Маршруты из EXCLUDE_ROUTES передаются
-    следующему обработчику без трассировки.
+    Связывает записи логов с идентификатором запроса, сохраняет его в `request.state` и возвращает
+    в заголовке `X-Request-ID`. Маршруты из `EXCLUDE_ROUTES` передаются следующему обработчику без
+    трассировки.
     """
 
     EXCLUDE_ROUTES: ClassVar[frozenset[str]] = frozenset(
@@ -89,19 +88,19 @@ class TraceRequestMiddleware:
     )
 
     async def __call__(self, request: Request, call_next: CallNext) -> Response:
-        """Добавляет контекст трассировки и заголовок X-Request-ID.
+        """Добавляет контекст трассировки и заголовок `X-Request-ID`.
 
-        Использует первый непустой заголовок X-Request-ID или X-Correlation-ID;
-        при их отсутствии создаёт UUIDv7. Сохраняет идентификатор
-        в request.state.request_id и логирует результат обработки.
+        Использует первый непустой заголовок `X-Request-ID` или `X-Correlation-ID`; при их
+        отсутствии создаёт UUIDv7. Сохраняет идентификатор в `request.state.request_id` и логирует
+        результат обработки.
 
         Args:
             request (Request): HTTP-запрос с маршрутом и заголовками трассировки.
             call_next (CallNext): Следующий обработчик HTTP-запроса.
 
         Returns:
-            Response: Ответ следующего обработчика с X-Request-ID либо исходный
-                ответ для маршрута из EXCLUDE_ROUTES.
+            Response: Ответ следующего обработчика с `X-Request-ID` либо исходный ответ для
+                маршрута из `EXCLUDE_ROUTES`.
         """
         if request.url.path in self.EXCLUDE_ROUTES:
             return await call_next(request)
@@ -120,7 +119,7 @@ class TraceRequestMiddleware:
 
     @staticmethod
     def _get_trace_id(request: Request) -> str:
-        """Выбирает X-Request-ID, затем X-Correlation-ID, иначе создаёт UUIDv7 в hex."""
+        """Выбирает `X-Request-ID`, затем `X-Correlation-ID`, иначе создаёт UUIDv7 в `hex`."""
         return (
             request.headers.get("X-Request-ID")
             or request.headers.get("X-Correlation-ID")
@@ -144,9 +143,9 @@ class TraceRequestMiddleware:
 class PerfCountingMiddleware:
     """Middleware измерения длительности обработки HTTP-запросов.
 
-    Измеряет время работы следующего обработчика через perf_counter и записывает
-    миллисекунды в заголовок X-Response-Time и лог. Маршруты из EXCLUDE_ROUTES
-    передаются следующему обработчику без измерения.
+    Измеряет время работы следующего обработчика через `perf_counter` и записывает миллисекунды в
+    заголовок `X-Response-Time` и лог. Маршруты из `EXCLUDE_ROUTES` передаются следующему
+    обработчику без измерения.
     """
 
     EXCLUDE_ROUTES: ClassVar[frozenset[str]] = frozenset(
@@ -158,15 +157,15 @@ class PerfCountingMiddleware:
     )
 
     async def __call__(self, request: Request, call_next: CallNext) -> Response:
-        """Добавляет время обработки в заголовок X-Response-Time и лог.
+        """Добавляет время обработки в заголовок `X-Response-Time` и лог.
 
         Args:
             request (Request): HTTP-запрос с маршрутом для проверки исключений.
             call_next (CallNext): Следующий обработчик HTTP-запроса.
 
         Returns:
-            Response: Ответ с X-Response-Time в миллисекундах, округлённых до двух
-                знаков после запятой, либо исходный ответ для исключённого маршрута.
+            Response: Ответ с `X-Response-Time` в миллисекундах, округлённых до двух знаков после
+                запятой, либо исходный ответ для исключённого маршрута.
         """
         if request.url.path in self.EXCLUDE_ROUTES:
             return await call_next(request)
@@ -178,7 +177,7 @@ class PerfCountingMiddleware:
 
     @staticmethod
     def _record_duration(request: Request, response: Response, started_at: float) -> None:
-        """Записывает в ответ и лог миллисекунды с момента started_at из perf_counter."""
+        """Записывает в ответ и лог миллисекунды с момента `started_at` из `perf_counter`."""
         duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
         response.headers["X-Response-Time"] = str(duration_ms)
 

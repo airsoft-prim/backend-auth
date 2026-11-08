@@ -42,10 +42,14 @@ async def test_registration_stores_hashed_account_in_database(
 ) -> None:
     """Регистрация новой учётной записи.
 
-    Given: логин и адрес свободны, таблицы схемы `auth` на месте,
-    When: гость регистрируется,
-    Then: учётная запись записана с Argon2id-хешем пароля, ролью `user` и метками времени,
-    а пароль проверяется по сохранённому хешу.
+    Given: логин и адрес свободны, таблицы схемы `auth` на месте, When: гость регистрируется, Then:
+    учётная запись записана с Argon2id-хешем пароля, ролью `user` и метками времени, а пароль
+    проверяется по сохранённому хешу.
+
+    Args:
+        register_user (RegisterUser): Сценарий регистрации через репозиторий текущего теста.
+        database_session (AsyncSession): Сессия PostgreSQL, привязанная к транзакции теста.
+        password_hash (PasswordHash): Хешер паролей Argon2, используемый приложением.
     """
     # Когда
     await register_user(username=USERNAME, email=EMAIL, password=PASSWORD)
@@ -68,9 +72,11 @@ async def test_registration_stores_hashed_account_in_database(
 async def test_registration_rejects_taken_credentials(register_user: RegisterUser) -> None:
     """Повторная регистрация.
 
-    Given: учётная запись уже зарегистрирована,
-    When: гость регистрируется с тем же логином или с тем же адресом в другом регистре,
-    Then: сервис отказывает по каждому поводу.
+    Given: учётная запись уже зарегистрирована, When: гость регистрируется с тем же логином или с
+    тем же адресом в другом регистре, Then: сервис отказывает по каждому поводу.
+
+    Args:
+        register_user (RegisterUser): Сценарий регистрации через репозиторий текущего теста.
     """
     # Дано
     await register_user(username=USERNAME, email=EMAIL, password=PASSWORD)
@@ -88,9 +94,12 @@ async def test_database_keeps_email_unique_regardless_of_case(
 ) -> None:
     """Уникальность адреса в БД.
 
-    Given: в БД есть учётная запись с адресом в нижнем регистре,
-    When: мимо сервисной проверки сохраняется тот же адрес в верхнем регистре,
-    Then: БД отвергает запись: уникальность держит функциональный индекс по `lower(email)`.
+    Given: в БД есть учётная запись с адресом в нижнем регистре, When: мимо сервисной проверки
+    сохраняется тот же адрес в верхнем регистре, Then: БД отвергает запись: уникальность держит
+    функциональный индекс по `lower(email)`.
+
+    Args:
+        database_session (AsyncSession): Сессия PostgreSQL, привязанная к транзакции теста.
     """
     # Дано
     repository = SqlAlchemyUserRepository(database_session)

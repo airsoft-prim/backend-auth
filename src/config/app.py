@@ -3,7 +3,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class ApplicationConfiguration(BaseSettings):
-    """Секция конфигурации основных настроек приложения."""
+    """Секция конфигурации основных настроек приложения.
+
+    Читает переменные с префиксом `APP_`. Задаёт имя сервиса и проекта, режим отладки `DEBUG` и
+    независимое включение документации `DOCS`.
+    """
 
     model_config = SettingsConfigDict(env_prefix="APP_")
 

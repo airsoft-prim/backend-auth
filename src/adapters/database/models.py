@@ -32,8 +32,8 @@ NAMING_CONVENTION = {
 class BaseModel(AsyncAttrs, DeclarativeBase):
     """Базовый класс всех ORM-моделей.
 
-    AsyncAttrs даёт awaitable_attrs: ленивая загрузка отношений
-    в асинхронном коде через `await obj.awaitable_attrs.<relation>`.
+    `AsyncAttrs` даёт awaitable_attrs: ленивая загрузка отношений в асинхронном коде через `await
+    obj.awaitable_attrs.<relation>`.
     """
 
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
@@ -42,8 +42,8 @@ class BaseModel(AsyncAttrs, DeclarativeBase):
 class TimestampedModel(BaseModel):
     """Класс моделей с временными метками.
 
-    Метки проставляются на стороне PostgreSQL (`now()`):
-    значения не зависят от часов и таймзоны инстанса приложения.
+    Метки проставляются на стороне PostgreSQL (`now()`): значения не зависят от часов и таймзоны
+    инстанса приложения.
     """
 
     __abstract__ = True
@@ -62,7 +62,11 @@ class TimestampedModel(BaseModel):
 
 
 class UserModel(TimestampedModel):
-    """Игрок, зарегистрированный на портале."""
+    """Игрок, зарегистрированный на портале.
+
+    Отображает учётную запись в таблицу `auth.users`. Логин уникален с учётом регистра, адрес почты
+    — по индексу `lower`(`email`); пароль хранится в виде хеша.
+    """
 
     __tablename__ = "users"
     __table_args__ = (

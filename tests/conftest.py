@@ -1,7 +1,7 @@
 """Общие фикстуры тестов: приложение, клиент и подмены внешних ресурсов.
 
-Redis подменяется хранилищем в памяти (`tests/doubles.py`), поэтому тесты не зависят
-от внешнего сервера. Настоящий Redis проверяет только слой интеграционных тестов.
+`Redis` подменяется хранилищем в памяти (`tests/doubles.py`), поэтому тесты не зависят от внешнего
+сервера. Настоящий `Redis` проверяет только слой интеграционных тестов.
 """
 
 from collections.abc import Iterator
@@ -40,7 +40,7 @@ def api_app() -> Iterator[FastAPI]:
     """Отдаёт приложение и снимает подмены зависимостей после теста.
 
     Yields:
-        Iterator[FastAPI]: Приложение под тестом.
+        FastAPI: Приложение под тестом.
     """
     yield application
     application.dependency_overrides.clear()
@@ -63,8 +63,8 @@ def api_client(api_app: FastAPI) -> ASGIClient:
 def password_hash() -> PasswordHash:
     """Отдаёт хешер паролей, тот же, что собирается для приложения.
 
-    Хешер берётся из общих средств безопасности, чтобы тест проверял именно ту
-    конфигурацию Argon2id, с которой работает сервис.
+    Хешер берётся из общих средств безопасности, чтобы тест проверял именно ту конфигурацию
+    Argon2id, с которой работает сервис.
 
     Returns:
         PasswordHash: Хешер паролей.
@@ -74,7 +74,7 @@ def password_hash() -> PasswordHash:
 
 @pytest.fixture
 def redis_double() -> InMemoryRedis:
-    """Отдаёт пустую подмену Redis.
+    """Отдаёт пустую подмену `Redis`.
 
     Returns:
         InMemoryRedis: Хранилище в памяти.
@@ -84,10 +84,10 @@ def redis_double() -> InMemoryRedis:
 
 @pytest.fixture
 def jwk_repository(redis_double: InMemoryRedis) -> RedisPublicJwkRepository:
-    """Отдаёт репозиторий публичных JWK поверх подмены Redis.
+    """Отдаёт репозиторий публичных JWK поверх подмены `Redis`.
 
     Args:
-        redis_double (InMemoryRedis): Подмена Redis.
+        redis_double (InMemoryRedis): Подмена `Redis`.
 
     Returns:
         RedisPublicJwkRepository: Репозиторий публичных ключей.
@@ -97,10 +97,10 @@ def jwk_repository(redis_double: InMemoryRedis) -> RedisPublicJwkRepository:
 
 @pytest.fixture
 def blacklisted_tokens_repository(redis_double: InMemoryRedis) -> RedisRevokedTokensRepository:
-    """Отдаёт репозиторий отозванных токенов поверх подмены Redis.
+    """Отдаёт репозиторий отозванных токенов поверх подмены `Redis`.
 
     Args:
-        redis_double (InMemoryRedis): Подмена Redis.
+        redis_double (InMemoryRedis): Подмена `Redis`.
 
     Returns:
         RedisRevokedTokensRepository: Репозиторий отозванных токенов.
@@ -110,10 +110,10 @@ def blacklisted_tokens_repository(redis_double: InMemoryRedis) -> RedisRevokedTo
 
 @pytest.fixture
 def revoked_sessions_repository(redis_double: InMemoryRedis) -> RedisRevokedSessionsRepository:
-    """Отдаёт репозиторий отозванных сессий поверх подмены Redis.
+    """Отдаёт репозиторий отозванных сессий поверх подмены `Redis`.
 
     Args:
-        redis_double (InMemoryRedis): Подмена Redis.
+        redis_double (InMemoryRedis): Подмена `Redis`.
 
     Returns:
         RedisRevokedSessionsRepository: Репозиторий отозванных сессий.
@@ -123,10 +123,10 @@ def revoked_sessions_repository(redis_double: InMemoryRedis) -> RedisRevokedSess
 
 @pytest.fixture
 def session_repository(redis_double: InMemoryRedis) -> RedisSessionRepository:
-    """Отдаёт репозиторий сессий поверх подмены Redis.
+    """Отдаёт репозиторий сессий поверх подмены `Redis`.
 
     Args:
-        redis_double (InMemoryRedis): Подмена Redis.
+        redis_double (InMemoryRedis): Подмена `Redis`.
 
     Returns:
         RedisSessionRepository: Репозиторий сессий пользователей.
@@ -136,7 +136,7 @@ def session_repository(redis_double: InMemoryRedis) -> RedisSessionRepository:
 
 @pytest.fixture
 def unavailable_repository() -> RedisPublicJwkRepository:
-    """Отдаёт репозиторий публичных JWK с недоступным Redis.
+    """Отдаёт репозиторий публичных JWK с недоступным `Redis`.
 
     Returns:
         RedisPublicJwkRepository: Репозиторий, чьи обращения к кешу падают.
@@ -188,7 +188,7 @@ def rotate_jwk(
     private_jwk_repository: FilePrivateJwkRepository,
     jwk_repository: RedisPublicJwkRepository,
 ) -> RotateJwk:
-    """Отдаёт use case ротации JWK поверх подмены Redis.
+    """Отдаёт use case ротации JWK поверх подмены `Redis`.
 
     Args:
         private_jwk_repository (FilePrivateJwkRepository): Репозиторий приватного ключа.
@@ -202,7 +202,7 @@ def rotate_jwk(
 
 @pytest.fixture
 def collect_jwks(jwk_repository: RedisPublicJwkRepository) -> CollectJwks:
-    """Отдаёт use case сбора JWK поверх подмены Redis.
+    """Отдаёт use case сбора JWK поверх подмены `Redis`.
 
     Args:
         jwk_repository (RedisPublicJwkRepository): Репозиторий публичных ключей.
@@ -223,7 +223,7 @@ def sign_token(
         private_jwk_repository (FilePrivateJwkRepository): Репозиторий приватного ключа.
 
     Returns:
-        SignToken: Use case подписи access-токенов.
+        SignToken: Use case подписи `access`-токенов.
     """
     token_config = AccessTokenConfig(
         issuer=config.app.NAME,
@@ -236,13 +236,13 @@ def sign_token(
 
 @pytest.fixture
 def verify_token(jwk_repository: RedisPublicJwkRepository) -> VerifyToken[AccessTokenClaims]:
-    """Отдаёт use case проверки токенов поверх подмены Redis.
+    """Отдаёт use case проверки токенов поверх подмены `Redis`.
 
     Args:
         jwk_repository (RedisPublicJwkRepository): Репозиторий публичных ключей.
 
     Returns:
-        VerifyToken[AccessTokenClaims]: Use case проверки access-токенов.
+        VerifyToken[AccessTokenClaims]: Use case проверки `access`-токенов.
     """
     token_config = AccessTokenConfig(
         issuer=config.app.NAME,
@@ -257,13 +257,13 @@ def verify_token(jwk_repository: RedisPublicJwkRepository) -> VerifyToken[Access
 def sign_refresh_token(
     private_jwk_repository: FilePrivateJwkRepository,
 ) -> SignToken:
-    """Отдаёт use case выпуска refresh-токенов поверх keyfile.
+    """Отдаёт use case выпуска `refresh`-токенов поверх keyfile.
 
     Args:
         private_jwk_repository (FilePrivateJwkRepository): Репозиторий приватного ключа.
 
     Returns:
-        SignToken: Use case подписи refresh-токенов.
+        SignToken: Use case подписи `refresh`-токенов.
     """
     token_config = RefreshTokenConfig(
         issuer=config.app.NAME,
@@ -278,13 +278,13 @@ def sign_refresh_token(
 def verify_refresh_token(
     jwk_repository: RedisPublicJwkRepository,
 ) -> VerifyToken[RefreshTokenClaims]:
-    """Отдаёт use case проверки refresh-токенов поверх подмены Redis.
+    """Отдаёт use case проверки `refresh`-токенов поверх подмены `Redis`.
 
     Args:
         jwk_repository (RedisPublicJwkRepository): Репозиторий публичных ключей.
 
     Returns:
-        VerifyToken[RefreshTokenClaims]: Use case проверки refresh-токенов.
+        VerifyToken[RefreshTokenClaims]: Use case проверки `refresh`-токенов.
     """
     token_config = RefreshTokenConfig(
         issuer=config.app.NAME,
@@ -297,14 +297,14 @@ def verify_refresh_token(
 
 @pytest.fixture
 def jwks_client(api_app: FastAPI, jwk_repository: RedisPublicJwkRepository) -> ASGIClient:
-    """Отдаёт клиент эндпоинта JWKS с ключами из подмены Redis.
+    """Отдаёт клиент эндпоинта JWKS с ключами из подмены `Redis`.
 
     Args:
         api_app (FastAPI): Приложение под тестом.
         jwk_repository (RedisPublicJwkRepository): Репозиторий публичных ключей.
 
     Returns:
-        ASGIClient: Клиент, чей сервис публикации читает подмену Redis.
+        ASGIClient: Клиент, чей сервис публикации читает подмену `Redis`.
     """
     api_app.dependency_overrides[get_collect_jwks] = lambda: CollectJwks(jwks=jwk_repository)
 

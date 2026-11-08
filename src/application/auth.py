@@ -10,7 +10,11 @@ from ._base import AbstractUseCase
 
 
 class RegisterUser(AbstractUseCase):
-    """Use case регистрации учётной записи портала."""
+    """Use case регистрации учётной записи портала.
+
+    Проверяет занятость логина и адреса почты через `UserRepository`, хеширует пароль через
+    `PasswordHasher` и сохраняет новую учётную запись.
+    """
 
     def __init__(self, users: UserRepository, hasher: PasswordHasher) -> None:
         """Инициализация класса.
@@ -50,7 +54,11 @@ class RegisterUser(AbstractUseCase):
 
 
 class LoginUser(AbstractUseCase):
-    """Use case входа пользователя в систему."""
+    """Use case входа пользователя в систему.
+
+    Находит учётную запись по логину, отклоняет отсутствующую или заблокированную запись и
+    проверяет пароль. Возвращает идентификатор и роль; сессию и токены не создаёт.
+    """
 
     def __init__(self, users: UserRepository, hasher: PasswordHasher) -> None:
         """Инициализация класса.
@@ -69,12 +77,12 @@ class LoginUser(AbstractUseCase):
             username (str): Имя пользователя.
             password (str): Пароль пользователя.
 
-        Raises:
-            UserIdentificationError: Пользователь не найден.
-            UserAuthenticationError: Неверный пароль.
-
         Returns:
             tuple[int, str]: Идентификатор пользователя и его системная роль.
+
+        Raises:
+            UserIdentificationError: Учётная запись отсутствует, заблокирована или не имеет ID.
+            UserAuthenticationError: Неверный пароль.
         """
         user = await self._users.get_by_username(username)
         if user is None or user.disabled:
@@ -93,7 +101,11 @@ class LoginUser(AbstractUseCase):
 
 
 class GetUser(AbstractUseCase):
-    """Use case получения учётной записи по её идентификатору."""
+    """Use case получения учётной записи по её идентификатору.
+
+    Загружает доменную сущность через `UserRepository`. Отсутствие записи преобразует в
+    `UserIdentificationError`.
+    """
 
     def __init__(self, users: UserRepository) -> None:
         """Инициализация класса.
@@ -109,11 +121,11 @@ class GetUser(AbstractUseCase):
         Args:
             user_id (int): Идентификатор учётной записи.
 
-        Raises:
-            UserIdentificationError: Учётная запись не найдена.
-
         Returns:
             User: Найденная учётная запись.
+
+        Raises:
+            UserIdentificationError: Учётная запись не найдена.
         """
         user = await self._users.get(user_id)
 

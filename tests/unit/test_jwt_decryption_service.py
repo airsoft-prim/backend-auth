@@ -1,4 +1,4 @@
-"""Тесты проверки access-токенов."""
+"""Тесты проверки `access`-токенов."""
 
 from datetime import UTC, datetime
 import json
@@ -26,7 +26,7 @@ HS256_SECRET = "hs256-secret"  # noqa: S105
 
 
 def _claims() -> dict[str, Any]:
-    """Собирает корректный набор claims access-токена без роли.
+    """Собирает корректный набор `claims` `access`-токена без роли.
 
     Returns:
         dict[str, Any]: Claims с издателем, аудиторией, субъектом и временем жизни.
@@ -70,9 +70,14 @@ async def test_verify_returns_claims_of_valid_token(
 ) -> None:
     """Проверка корректного токена.
 
-    Given: сервис выпустил токен ключом, чья публичная часть опубликована,
-    When: потребитель проверяет токен,
-    Then: подпись сходится, и он получает издателя, аудиторию, субъекта, роль и `jti`.
+    Given: сервис выпустил токен ключом, чья публичная часть опубликована, When: потребитель
+    проверяет токен, Then: подпись сходится, и он получает издателя, аудиторию, субъекта, роль и
+    `jti`.
+
+    Args:
+        sign_token (SignToken): Сценарий подписи `access`-токена ключом тестового хранилища.
+        verify_token (VerifyToken): Сценарий проверки JWT с тестовым хранилищем публичных JWK.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
     """
     # Дано
     published = await rotate_jwk(TTL_SECONDS)
@@ -98,9 +103,14 @@ async def test_verify_accepts_token_without_optional_role(
 ) -> None:
     """Проверка токена без необязательного claim роли.
 
-    Given: подпись верна, но кастомного claim `srl` в токене нет,
-    When: потребитель проверяет токен,
-    Then: сервис принимает токен: роль — необязательный claim.
+    Given: подпись верна, но кастомного claim `srl` в токене нет, When: потребитель проверяет
+    токен, Then: сервис принимает токен: роль — необязательный claim.
+
+    Args:
+        verify_token (VerifyToken): Сценарий проверки JWT с тестовым хранилищем публичных JWK.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
+        raw_token_signer (RawTokenSigner): Функция подписи JWT с заданными `claims` и
+            необязательным `kid`.
     """
     # Дано
     published = await rotate_jwk(TTL_SECONDS)
@@ -122,9 +132,14 @@ async def test_verify_rejects_token_whose_key_is_not_published(
 ) -> None:
     """Проверка токена без опубликованного ключа.
 
-    Given: токен выпущен ключом, который пропал из опубликованного набора JWK,
-    When: потребитель проверяет токен,
-    Then: сервис отказывает, потому что проверять подпись нечем.
+    Given: токен выпущен ключом, который пропал из опубликованного набора JWK, When: потребитель
+    проверяет токен, Then: сервис отказывает, потому что проверять подпись нечем.
+
+    Args:
+        sign_token (SignToken): Сценарий подписи `access`-токена ключом тестового хранилища.
+        verify_token (VerifyToken): Сценарий проверки JWT с тестовым хранилищем публичных JWK.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
+        redis_double (InMemoryRedis): Подмена `Redis` с хранилищем значений и TTL в памяти.
     """
     # Дано
     await rotate_jwk(TTL_SECONDS)
@@ -143,9 +158,13 @@ async def test_verify_rejects_token_with_broken_signature(
 ) -> None:
     """Проверка токена с изменённой подписью.
 
-    Given: подпись токена повреждена после выпуска,
-    When: потребитель проверяет токен,
-    Then: сервис отказывает: подпись не сходится с содержимым токена.
+    Given: подпись токена повреждена после выпуска, When: потребитель проверяет токен, Then: сервис
+    отказывает: подпись не сходится с содержимым токена.
+
+    Args:
+        sign_token (SignToken): Сценарий подписи `access`-токена ключом тестового хранилища.
+        verify_token (VerifyToken): Сценарий проверки JWT с тестовым хранилищем публичных JWK.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
     """
     # Дано
     await rotate_jwk(TTL_SECONDS)
@@ -166,9 +185,14 @@ async def test_verify_rejects_expired_token(
 ) -> None:
     """Проверка просроченного токена.
 
-    Given: срок действия токена истёк,
-    When: потребитель проверяет токен,
-    Then: сервис отказывает, даже если подпись верна.
+    Given: срок действия токена истёк, When: потребитель проверяет токен, Then: сервис отказывает,
+    даже если подпись верна.
+
+    Args:
+        verify_token (VerifyToken): Сценарий проверки JWT с тестовым хранилищем публичных JWK.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
+        private_jwk_repository (FilePrivateJwkRepository): Репозиторий приватного ключа во
+            временном каталоге.
     """
     # Дано
     await rotate_jwk(TTL_SECONDS)
@@ -190,9 +214,14 @@ async def test_verify_rejects_token_without_key_id(
 ) -> None:
     """Проверка токена без `kid` в заголовке.
 
-    Given: токен подписан, но заголовок не адресует ключ,
-    When: потребитель проверяет токен,
-    Then: сервис отказывает: ключ для проверки не выбрать.
+    Given: токен подписан, но заголовок не адресует ключ, When: потребитель проверяет токен, Then:
+    сервис отказывает: ключ для проверки не выбрать.
+
+    Args:
+        verify_token (VerifyToken): Сценарий проверки JWT с тестовым хранилищем публичных JWK.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
+        raw_token_signer (RawTokenSigner): Функция подписи JWT с заданными `claims` и
+            необязательным `kid`.
     """
     # Дано
     await rotate_jwk(TTL_SECONDS)
@@ -206,9 +235,11 @@ async def test_verify_rejects_token_without_key_id(
 async def test_verify_rejects_malformed_token(verify_token: VerifyToken) -> None:
     """Проверка строки, не являющейся JWT.
 
-    Given: вместо токена передана произвольная строка,
-    When: потребитель проверяет её,
-    Then: сервис отказывает, не пытаясь читать заголовок.
+    Given: вместо токена передана произвольная строка, When: потребитель проверяет её, Then: сервис
+    отказывает, не пытаясь читать заголовок.
+
+    Args:
+        verify_token (VerifyToken): Сценарий проверки JWT с тестовым хранилищем публичных JWK.
     """
     # Когда / Тогда
     with pytest.raises(JWTDecryptionError, match="Token header is invalid"):
@@ -222,9 +253,14 @@ async def test_verify_rejects_token_without_required_claim(
 ) -> None:
     """Проверка токена без обязательного `jti`.
 
-    Given: подпись верна, но в claims нет идентификатора токена,
-    When: потребитель проверяет токен,
-    Then: сервис отказывает: без `jti` токен нельзя отозвать при выходе.
+    Given: подпись верна, но в `claims` нет идентификатора токена, When: потребитель проверяет
+    токен, Then: сервис отказывает: без `jti` токен нельзя отозвать при выходе.
+
+    Args:
+        verify_token (VerifyToken): Сценарий проверки JWT с тестовым хранилищем публичных JWK.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
+        raw_token_signer (RawTokenSigner): Функция подписи JWT с заданными `claims` и
+            необязательным `kid`.
     """
     # Дано
     published = await rotate_jwk(TTL_SECONDS)
@@ -244,9 +280,14 @@ async def test_verify_rejects_token_with_foreign_issuer(
 ) -> None:
     """Проверка токена с чужим издателем.
 
-    Given: подпись верна, но токен выпущен другим издателем,
-    When: потребитель проверяет токен,
+    Given: подпись верна, но токен выпущен другим издателем, When: потребитель проверяет токен,
     Then: сервис отказывает: токен адресован не этому сервису.
+
+    Args:
+        verify_token (VerifyToken): Сценарий проверки JWT с тестовым хранилищем публичных JWK.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
+        raw_token_signer (RawTokenSigner): Функция подписи JWT с заданными `claims` и
+            необязательным `kid`.
     """
     # Дано
     published = await rotate_jwk(TTL_SECONDS)
@@ -265,9 +306,14 @@ async def test_verify_rejects_token_with_foreign_audience(
 ) -> None:
     """Проверка токена с чужой аудиторией.
 
-    Given: подпись верна, но токен выпущен для другой аудитории,
-    When: потребитель проверяет токен,
+    Given: подпись верна, но токен выпущен для другой аудитории, When: потребитель проверяет токен,
     Then: сервис отказывает: токен адресован не ему.
+
+    Args:
+        verify_token (VerifyToken): Сценарий проверки JWT с тестовым хранилищем публичных JWK.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
+        raw_token_signer (RawTokenSigner): Функция подписи JWT с заданными `claims` и
+            необязательным `kid`.
     """
     # Дано
     published = await rotate_jwk(TTL_SECONDS)
@@ -285,9 +331,12 @@ async def test_verify_rejects_token_with_foreign_algorithm(
 ) -> None:
     """Проверка токена, подписанного другим алгоритмом.
 
-    Given: токен подписан HS256, а сервис принимает только EdDSA,
-    When: потребитель проверяет токен,
-    Then: сервис отказывает, не подставляя чужой алгоритм проверки.
+    Given: токен подписан HS256, а сервис принимает только EdDSA, When: потребитель проверяет
+    токен, Then: сервис отказывает, не подставляя чужой алгоритм проверки.
+
+    Args:
+        verify_token (VerifyToken): Сценарий проверки JWT с тестовым хранилищем публичных JWK.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
     """
     # Дано
     published = await rotate_jwk(TTL_SECONDS)
@@ -311,9 +360,15 @@ async def test_verify_rejects_invalid_published_key(
 ) -> None:
     """Проверка токена при испорченном публичном ключе в кеше.
 
-    Given: по `kid` из заголовка в кеше лежит неполный JWK,
-    When: потребитель проверяет токен,
+    Given: по `kid` из заголовка в кеше лежит неполный JWK, When: потребитель проверяет токен,
     Then: сервис отказывает, не пропуская токен без проверки подписи.
+
+    Args:
+        verify_token (VerifyToken): Сценарий проверки JWT с тестовым хранилищем публичных JWK.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
+        raw_token_signer (RawTokenSigner): Функция подписи JWT с заданными `claims` и
+            необязательным `kid`.
+        redis_double (InMemoryRedis): Подмена `Redis` с хранилищем значений и TTL в памяти.
     """
     # Дано
     published = await rotate_jwk(TTL_SECONDS)

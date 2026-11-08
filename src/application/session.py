@@ -35,17 +35,17 @@ _BROWSER_MARKERS: Final[tuple[tuple[str, str], ...]] = (
 
 
 def parse_user_agent(user_agent: str) -> tuple[str | None, str | None]:
-    """Разбирает User-Agent на платформу и браузер.
+    """Разбирает `User-Agent` на платформу и браузер.
 
-    Эвристика без внешних библиотек: ищет известные подстроки в порядке приоритета,
-    поэтому результат не исчерпывающий, но достаточный для списка сессий.
+    Эвристика без внешних библиотек: ищет известные подстроки в порядке приоритета, поэтому
+    результат не исчерпывающий, но достаточный для списка сессий.
 
     Args:
         user_agent (str): Строка заголовка `User-Agent`.
 
     Returns:
-        tuple[str | None, str | None]: Пара (платформа, браузер) или None, если
-            признак не найден.
+        tuple[str | None, str | None]: Пара (платформа, браузер) или `None`, если признак не
+            найден.
     """
     platform = next((name for marker, name in _PLATFORM_MARKERS if marker in user_agent), None)
     browser = next((name for marker, name in _BROWSER_MARKERS if marker in user_agent), None)
@@ -54,7 +54,12 @@ def parse_user_agent(user_agent: str) -> tuple[str | None, str | None]:
 
 
 class CreateSession(AbstractUseCase):
-    """Use case создания сессии пользователя."""
+    """Use case создания сессии пользователя.
+
+    При достижении лимита помечает самую старую активную сессию отозванной, затем сохраняет новую
+    сессию с `UUID` и сроком жизни `ttl`. Контекст входа дополняется платформой и браузером из
+    `User-Agent`.
+    """
 
     def __init__(self, sessions: SessionRepository, ttl: int, max_active: int) -> None:
         """Инициализация класса.
@@ -75,8 +80,8 @@ class CreateSession(AbstractUseCase):
 
         Args:
             user_id (int): Идентификатор владельца сессии.
-            ip (str | None, optional): IP-адрес входа. Defaults to None.
-            user_agent (str | None, optional): Строка `User-Agent` входа. Defaults to None.
+            ip (str | None): IP-адрес входа.
+            user_agent (str | None): Строка `User-Agent` входа.
 
         Returns:
             Session: Созданная сессия.
@@ -108,7 +113,11 @@ class CreateSession(AbstractUseCase):
 
 
 class SlideSession(AbstractUseCase):
-    """Use case продления сессии (sliding expiration)."""
+    """Use case продления сессии (sliding expiration).
+
+    Для найденной неотозванной сессии устанавливает `expires_at` на `ttl` секунд от текущего
+    времени. Отсутствующую или отозванную сессию оставляет без изменений.
+    """
 
     def __init__(self, sessions: SessionRepository, ttl: int) -> None:
         """Инициализация класса.
@@ -134,7 +143,11 @@ class SlideSession(AbstractUseCase):
 
 
 class ListSessions(AbstractUseCase):
-    """Use case получения активных сессий пользователя."""
+    """Use case получения активных сессий пользователя.
+
+    Получает активные сессии через `SessionRepository` и сортирует их по `created_at` от новых к
+    старым.
+    """
 
     def __init__(self, sessions: SessionRepository) -> None:
         """Инициализация класса.
@@ -159,7 +172,11 @@ class ListSessions(AbstractUseCase):
 
 
 class CloseSession(AbstractUseCase):
-    """Use case закрытия одной сессии пользователя."""
+    """Use case закрытия одной сессии пользователя.
+
+    Проверяет принадлежность сессии пользователю, сохраняет маркер отзыва на остаток срока её
+    действия и устанавливает `revoked_at`. Повторное закрытие отозванной сессии ничего не меняет.
+    """
 
     def __init__(self, revoked: RevokedSessionsRepository, sessions: SessionRepository) -> None:
         """Инициализация класса.
@@ -199,7 +216,11 @@ class CloseSession(AbstractUseCase):
 
 
 class CloseOtherSessions(AbstractUseCase):
-    """Use case закрытия всех сессий пользователя, кроме текущей."""
+    """Use case закрытия всех сессий пользователя, кроме текущей.
+
+    Перебирает активные сессии пользователя и вызывает `CloseSession` для каждой, кроме сессии с
+    переданным `current_sid`.
+    """
 
     def __init__(self, sessions: SessionRepository, close: CloseSession) -> None:
         """Инициализация класса.

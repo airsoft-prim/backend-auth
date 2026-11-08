@@ -31,10 +31,12 @@ async def test_register_creates_account_without_body(
 ) -> None:
     """Регистрация новой учётной записи.
 
-    Given: логин и адрес свободны,
-    When: гость отправляет данные регистрации,
-    Then: приходит 204 без тела: профиль созданной учётной записи не отдаётся
-    (`docs/API_AUTH.md` §4.1).
+    Given: логин и адрес свободны, When: гость отправляет данные регистрации, Then: приходит `204`
+    без тела: профиль созданной учётной записи не отдаётся (`docs/API_AUTH.md` §4.1).
+
+    Args:
+        register_client_factory (RegisterClientFactory): Фабрика ASGI-клиентов регистрации с
+            заданным сценарием.
     """
     # Дано
     service = StubUserService()
@@ -53,11 +55,15 @@ async def test_register_creates_account_without_body(
 async def test_register_accepts_password_longer_than_72_bytes(
     register_client_factory: RegisterClientFactory,
 ) -> None:
-    """Пароль длиннее 72 байт.
+    """Пароль длиннее `72` байт.
 
-    Given: пароль укладывается в 72 символа, но занимает больше 72 байт,
-    When: гость регистрируется,
-    Then: приходит 204: предел в 72 байта был ограничением bcrypt, а Argon2id его не имеет.
+    Given: пароль укладывается в `72` символа, но занимает больше `72` байт, When: гость
+    регистрируется, Then: приходит `204`: предел в `72` байта был ограничением bcrypt, а Argon2id
+    его не имеет.
+
+    Args:
+        register_client_factory (RegisterClientFactory): Фабрика ASGI-клиентов регистрации с
+            заданным сценарием.
     """
     # Дано
     service = StubUserService()
@@ -89,9 +95,15 @@ async def test_register_rejects_body_that_breaks_the_policy(
 ) -> None:
     """Тело, не отвечающее политике регистрации.
 
-    Given: одно из полей тела не отвечает политике username, email или пароля,
-    When: гость отправляет данные регистрации,
-    Then: приходит 422, а до сервиса учётных записей запрос не доходит.
+    Given: одно из полей тела не отвечает политике `username`, `email` или пароля, When: гость
+    отправляет данные регистрации, Then: приходит `422`, а до сервиса учётных записей запрос не
+    доходит.
+
+    Args:
+        register_client_factory (RegisterClientFactory): Фабрика ASGI-клиентов регистрации с
+            заданным сценарием.
+        field (str): Поле запроса с нарушением политики валидации.
+        value (str): Новое имя базы данных без окружающих пробелов и слешей.
     """
     # Дано
     service = StubUserService()
@@ -115,9 +127,13 @@ async def test_register_fails_with_conflict_when_credentials_are_taken(
 ) -> None:
     """Занятые учётные данные.
 
-    Given: логин или адрес уже зарегистрированы,
-    When: гость регистрируется с теми же данными,
-    Then: приходит 409 с причиной из сервиса (`docs/API_AUTH.md` §4.1).
+    Given: логин или адрес уже зарегистрированы, When: гость регистрируется с теми же данными,
+    Then: приходит `409` с причиной из сервиса (`docs/API_AUTH.md` §4.1).
+
+    Args:
+        register_client_factory (RegisterClientFactory): Фабрика ASGI-клиентов регистрации с
+            заданным сценарием.
+        message (str): Сообщение ASGI-приложения.
     """
     # Дано
     service = StubUserService(error=UserAlreadyExistsError(message))
@@ -136,9 +152,12 @@ async def test_register_fails_with_server_error_when_database_is_unavailable(
 ) -> None:
     """Отказ БД.
 
-    Given: обращения к БД завершаются ошибкой,
-    When: гость отправляет данные регистрации,
-    Then: приходит 500: отказ инфраструктуры не выдаётся за занятые учётные данные.
+    Given: обращения к БД завершаются ошибкой, When: гость отправляет данные регистрации, Then:
+    приходит `500`: отказ инфраструктуры не выдаётся за занятые учётные данные.
+
+    Args:
+        register_client_factory (RegisterClientFactory): Фабрика ASGI-клиентов регистрации с
+            заданным сценарием.
     """
     # Дано
     service = StubUserService(error=RepositoryError("User saving error."))

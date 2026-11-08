@@ -6,7 +6,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class CacheConfiguration(BaseSettings):
-    """Секция конфигурации кеша."""
+    """Секция конфигурации кеша.
+
+    Читает переменные с префиксом `CACHE_` и формирует `RedisDsn`. Проверяет диапазон порта и
+    неотрицательный номер логической БД; учётные данные могут отсутствовать.
+    """
 
     model_config = SettingsConfigDict(env_prefix="CACHE_")
 
@@ -18,7 +22,7 @@ class CacheConfiguration(BaseSettings):
 
     @property
     def DSN(self) -> RedisDsn:  # noqa: N802
-        """Возвращает провалидированный DSN Redis."""
+        """Возвращает провалидированный `DSN` `Redis`."""
         return RedisDsn.build(
             scheme="redis",
             username=self.USER,

@@ -23,8 +23,8 @@ ENCRYPTION_DETAILS = "Signing key file is missing."
 def security_client() -> ASGIClient:
     """Отдаёт клиент приложения с маршрутами, поднимающими ошибки безопасности.
 
-    Обработчики регистрируются теми же средствами, что и в приложении, поэтому тест
-    проверяет и сам обработчик, и выбор обработчика по типу исключения.
+    Обработчики регистрируются теми же средствами, что и в приложении, поэтому тест проверяет и сам
+    обработчик, и выбор обработчика по типу исключения.
 
     Returns:
         ASGIClient: Клиент тестового приложения.
@@ -34,20 +34,24 @@ def security_client() -> ASGIClient:
 
     @app.get(DECRYPTION_PATH)
     async def _raise_decryption_error() -> None:
+        """Выбрасывает заданную ошибку для проверки HTTP-обработчика."""
         msg = "Token is invalid."
         raise JWTDecryptionError(msg)
 
     @app.get(ENCRYPTION_PATH)
     async def _raise_encryption_error() -> None:
+        """Выбрасывает заданную ошибку для проверки HTTP-обработчика."""
         raise JWTEncryptionError(ENCRYPTION_DETAILS)
 
     @app.get(LOGIN_PATH)
     async def _raise_login_error() -> None:
+        """Выбрасывает заданную ошибку для проверки HTTP-обработчика."""
         msg = "Password is incorrect."
         raise UserAuthenticationError(msg)
 
     @app.get(SECURITY_PATH)
     async def _raise_security_error() -> None:
+        """Выбрасывает заданную ошибку для проверки HTTP-обработчика."""
         msg = "Access denied."
         raise SecurityError(msg)
 
@@ -59,9 +63,12 @@ async def test_jwt_decryption_error_returns_forbidden(
 ) -> None:
     """Невалидный токен.
 
-    Given: проверка токена завершилась ошибкой `JWTDecryptionError`,
-    When: исключение доходит до обработчика приложения,
-    Then: клиент получает 403 с телом `message`/`details` без `error_type`.
+    Given: проверка токена завершилась ошибкой `JWTDecryptionError`, When: исключение доходит до
+    обработчика приложения, Then: клиент получает `403` с телом `message`/`details` без
+    `error_type`.
+
+    Args:
+        security_client (ASGIClient): ASGI-клиент маршрутов, выбрасывающих ошибки безопасности.
     """
     # Когда
     response = await security_client.get(DECRYPTION_PATH)
@@ -80,9 +87,12 @@ async def test_login_error_returns_unauthorized_with_challenge(
 ) -> None:
     """Неверный пароль.
 
-    Given: вход завершился ошибкой `UserAuthenticationError`,
-    When: исключение доходит до обработчика приложения,
-    Then: клиент получает 401 с `WWW-Authenticate: Bearer` и общим телом ошибки.
+    Given: вход завершился ошибкой `UserAuthenticationError`, When: исключение доходит до
+    обработчика приложения, Then: клиент получает `401` с `WWW-Authenticate: Bearer` и общим телом
+    ошибки.
+
+    Args:
+        security_client (ASGIClient): ASGI-клиент маршрутов, выбрасывающих ошибки безопасности.
     """
     # Когда
     response = await security_client.get(LOGIN_PATH)
@@ -101,9 +111,12 @@ async def test_security_error_without_specific_handler_returns_domain_error(
 ) -> None:
     """Ошибка безопасности без отдельного обработчика.
 
-    Given: поднята неспециализированная `SecurityError`,
-    When: исключение доходит до общего обработчика доменных ошибок,
-    Then: клиент получает 422, как и для любой другой доменной ошибки.
+    Given: поднята неспециализированная `SecurityError`, When: исключение доходит до общего
+    обработчика доменных ошибок, Then: клиент получает `422`, как и для любой другой доменной
+    ошибки.
+
+    Args:
+        security_client (ASGIClient): ASGI-клиент маршрутов, выбрасывающих ошибки безопасности.
     """
     # Когда
     response = await security_client.get(SECURITY_PATH)
@@ -119,9 +132,11 @@ async def test_jwt_encryption_error_returns_server_error_without_details(
 ) -> None:
     """Отказ выпуска токена.
 
-    Given: поднять `JWTEncryptionError` с причиной отказа keyfile,
-    When: исключение доходит до обработчика приложения,
-    Then: клиент получает 500 без внутренней причины и без `error_type`.
+    Given: поднять `JWTEncryptionError` с причиной отказа keyfile, When: исключение доходит до
+    обработчика приложения, Then: клиент получает `500` без внутренней причины и без `error_type`.
+
+    Args:
+        security_client (ASGIClient): ASGI-клиент маршрутов, выбрасывающих ошибки безопасности.
     """
     # Когда
     response = await security_client.get(ENCRYPTION_PATH)

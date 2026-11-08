@@ -24,7 +24,10 @@ TTL_SECONDS = 3600
 
 
 class StubLoginService:
-    """Подмена use case входа: возвращает заданные идентификатор и роль."""
+    """Подмена сценария входа без проверки учётных данных.
+
+    Возвращает постоянные `USER_ID` и `ROLE` для проверки HTTP-контракта входа без обращения к БД.
+    """
 
     async def __call__(self, _username: str, _password: str) -> tuple[int, str]:
         """Возвращает идентификатор и роль, не проверяя учётные данные.
@@ -49,9 +52,8 @@ def login_client(
 
     Args:
         api_app (FastAPI): Приложение под тестом.
-        sign_refresh_token (SignToken): Use case подписи refresh-токенов.
-        session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены
-            Redis.
+        sign_refresh_token (SignToken): Use case подписи `refresh`-токенов.
+        session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены `Redis`.
 
     Returns:
         ASGIClient: Клиент маршрута входа.
@@ -80,12 +82,15 @@ async def test_login_opens_session_and_sets_refresh_cookie(
     login_client: ASGIClient,
     rotate_jwk: RotateJwk,
 ) -> None:
-    """Вход открывает сессию и кладёт refresh-токен в cookie.
+    """Вход открывает сессию и кладёт `refresh`-токен в cookie.
 
-    Given: сгенерирован ключ подписи, а логин и пароль верны,
-    When: гость входит в систему,
-    Then: приходит 204 без тела, а refresh-токен — в HTTP-only cookie без роли; access-токен
-    вход не выдаёт.
+    Given: сгенерирован ключ подписи, а логин и пароль верны, When: гость входит в систему, Then:
+    приходит `204` без тела, а `refresh`-токен — в HTTP-only cookie без роли; `access`-токен вход
+    не выдаёт.
+
+    Args:
+        login_client (ASGIClient): ASGI-клиент входа с тестовыми зависимостями.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
     """
     # Дано
     await rotate_jwk(TTL_SECONDS)

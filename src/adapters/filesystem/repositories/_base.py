@@ -5,7 +5,11 @@ from src.adapters.filesystem import FileSystem
 
 
 class FileRepository(Repository):
-    """Репозиторий одного файла в файловой системе."""
+    """Репозиторий одного файла в файловой системе.
+
+    Читает и записывает байты файла `FILE_NAME` через `FileSystem`. Преобразует ошибки файловых
+    операций в `RepositoryError`.
+    """
 
     FILE_NAME: str
 
@@ -20,11 +24,8 @@ class FileRepository(Repository):
     async def acquire(self) -> bytes | None:
         """Читает файл репозитория.
 
-        Raises:
-            RepositoryError: Если файл не читается.
-
         Returns:
-            bytes | None: Содержимое файла или None, если файла нет.
+            bytes | None: Содержимое файла или `None`, если файла нет.
         """
         with self._as_repository_error(f"File {self.FILE_NAME!r} reading error."):
             with suppress(FileNotFoundError):
@@ -37,9 +38,6 @@ class FileRepository(Repository):
 
         Args:
             payload (bytes): Содержимое файла.
-
-        Raises:
-            RepositoryError: Если файл не пишется.
         """
         with self._as_repository_error(f"File {self.FILE_NAME!r} writing error."):
             await self._file_system.write(self.FILE_NAME, payload)

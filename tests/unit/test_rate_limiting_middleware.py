@@ -11,6 +11,12 @@ from src.interface.middlewares import RateLimitingMiddleware
 
 @pytest.fixture(autouse=True)
 def rate_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Устанавливает лимит `60` запросов за окно в `60` секунд для тестов.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Механизм временной подмены атрибутов и окружения
+            `pytest`.
+    """
     monkeypatch.setattr(config.security, "REQUEST_RATE_LIMIT", 60)
     monkeypatch.setattr(config.security, "REQUEST_RATE_WINDOW", 60)
 
@@ -19,6 +25,13 @@ def rate_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
 async def test_limit_blocks_excess_requests_and_resets(
     monkeypatch: pytest.MonkeyPatch, path: str
 ) -> None:
+    """Проверяет отказ сверх лимита, изоляцию IP и сброс счётчика на границе окна.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Механизм временной подмены атрибутов и окружения
+            `pytest`.
+        path (str): HTTP-путь проверяемого запроса.
+    """
     middleware = RateLimitingMiddleware()
     call_next = AsyncMock(return_value=Response(status_code=204))
     request = Request({"type": "http", "path": path, "client": ("192.0.2.1", 1234)})
@@ -42,6 +55,7 @@ async def test_limit_blocks_excess_requests_and_resets(
 
 
 async def test_missing_client_is_limited_and_forwarded_header_cannot_bypass_limit() -> None:
+    """Проверяет общий лимит без адреса клиента и невозможность обойти его заголовком."""
     middleware = RateLimitingMiddleware()
     call_next = AsyncMock(return_value=Response(status_code=204))
     for number in range(config.security.REQUEST_RATE_LIMIT + 1):

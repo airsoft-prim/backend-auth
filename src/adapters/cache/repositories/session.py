@@ -10,7 +10,7 @@ from ._base import RedisRepository
 
 
 class RedisSessionRepository(RedisRepository):
-    """Репозиторий сессий пользователей в Redis.
+    """Репозиторий сессий пользователей в `Redis`.
 
     Сессия хранится в JSON по ключу `session:{sid}` с TTL до `expires_at`; сеты
     `session:user:{user_id}` индексируют сессии по владельцу для лимита активных сессий.
@@ -24,9 +24,6 @@ class RedisSessionRepository(RedisRepository):
 
         Args:
             session (Session): Сессия для сохранения.
-
-        Raises:
-            RepositoryError: Если обращение к Redis завершилось ошибкой.
         """
         ttl = int((session.expires_at - datetime.now(UTC)).total_seconds())
 
@@ -47,11 +44,8 @@ class RedisSessionRepository(RedisRepository):
         Args:
             sid (str): Идентификатор сессии.
 
-        Raises:
-            RepositoryError: Если обращение к Redis завершилось ошибкой.
-
         Returns:
-            Session | None: Сессия или None, если её нет или срок истёк.
+            Session | None: Сессия или `None`, если её нет или срок истёк.
         """
         key = self._key_template.substitute(sid=sid)
 
@@ -65,9 +59,6 @@ class RedisSessionRepository(RedisRepository):
 
         Args:
             user_id (int): Идентификатор владельца сессий.
-
-        Raises:
-            RepositoryError: Если обращение к Redis завершилось ошибкой.
 
         Returns:
             Sequence[Session]: Неотозванные и неистёкшие сессии пользователя.
@@ -119,10 +110,10 @@ class RedisSessionRepository(RedisRepository):
 
     @staticmethod
     def _decode(value: str | bytes) -> str:
-        """Приводит значение Redis к строке.
+        """Приводит значение `Redis` к строке.
 
         Args:
-            value (str | bytes): Значение из Redis.
+            value (str | bytes): Значение из `Redis`.
 
         Returns:
             str: Строковое значение.

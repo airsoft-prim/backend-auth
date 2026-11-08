@@ -5,19 +5,24 @@ from src.domain.errors import RepositoryError
 
 
 class Repository:
-    """Базовый класс репозитория."""
+    """Базовый класс репозитория.
+
+    Предоставляет контекст преобразования исключений внешних ресурсов в `RepositoryError` с
+    сохранением причины ошибки.
+    """
 
     @contextmanager
     def _as_repository_error(self, message: str) -> Generator[None]:
-        """Контекстный менеджер, позволяющий удобно перехватить все ошибки,
-        возникающие в процессе работы репозитория и транслировать их в
-        RepositoryError.
+        """Преобразует исключение операции репозитория в `RepositoryError`.
 
         Args:
-            message (str): Сообщение к ошибке.
+            message (str): Сообщение для `RepositoryError`.
+
+        Yields:
+            None: Управление блоку файловой, `Redis`- или SQL-операции.
 
         Raises:
-            RepositoryError: Ошибка работы репозитория.
+            RepositoryError: Блок контекста выбросил исключение класса `Exception`.
         """
         try:
             yield  # Возвращает контроль интерпретатору

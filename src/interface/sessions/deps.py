@@ -15,7 +15,11 @@ from src.interface.auth.deps import get_refresh_token
 # TODO: Будто бы это здесь быть не должно.
 @dataclass(frozen=True, slots=True)
 class CurrentSession:
-    """Текущая сессия запроса: владелец и идентификатор из проверенного токена."""
+    """Текущая сессия запроса: владелец и идентификатор из проверенного токена.
+
+    Передаёт в маршруты управления сессиями числовой `user_id` и строковый `sid` из проверенных
+    `claims` `refresh`-токена.
+    """
 
     user_id: int
     sid: str
@@ -24,16 +28,16 @@ class CurrentSession:
 async def get_current_session(
     claims: Annotated[RefreshTokenClaims, Depends(get_refresh_token)],
 ) -> CurrentSession:
-    """Возвращает владельца и идентификатор сессии из проверенного refresh-токена.
+    """Возвращает владельца и идентификатор сессии из проверенного `refresh`-токена.
 
     Args:
-        claims (RefreshTokenClaims): Проверенные claims refresh-токена.
-
-    Raises:
-        JWTDecryptionError: В `sub` токена не числовой идентификатор пользователя.
+        claims (RefreshTokenClaims): Проверенные `claims` `refresh`-токена.
 
     Returns:
         CurrentSession: Владелец и `sid` сессии запроса.
+
+    Raises:
+        JWTDecryptionError: В `sub` токена не числовой идентификатор пользователя.
     """
     try:
         user_id = int(claims["sub"])
@@ -51,7 +55,7 @@ async def get_list_sessions(
     """Предоставляет use case получения активных сессий на время запроса.
 
     Args:
-        client (Redis): Клиент Redis с сессиями пользователей.
+        client (Redis): Клиент `Redis` с сессиями пользователей.
 
     Returns:
         ListSessions: Use case списка активных сессий.
@@ -66,8 +70,8 @@ async def get_close_session(
     """Предоставляет use case закрытия сессии на время запроса.
 
     Args:
-        tokens_client (Redis): Клиент Redis с отозванными сессиями.
-        sessions_client (Redis): Клиент Redis с сессиями пользователей.
+        tokens_client (Redis): Клиент `Redis` с отозванными сессиями.
+        sessions_client (Redis): Клиент `Redis` с сессиями пользователей.
 
     Returns:
         CloseSession: Use case закрытия одной сессии.
@@ -86,7 +90,7 @@ async def get_close_other_sessions(
 
     Args:
         close (CloseSession): Use case закрытия отдельной сессии.
-        client (Redis): Клиент Redis с сессиями пользователей.
+        client (Redis): Клиент `Redis` с сессиями пользователей.
 
     Returns:
         CloseOtherSessions: Use case закрытия всех сессий, кроме текущей.

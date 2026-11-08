@@ -1,9 +1,9 @@
 """Тестовые двойники внешних ресурсов.
 
-Redis заменяется подменой в памяти: проверяется отображение ключей и JSON в
-репозитории, а не работа самого Redis. Учётные записи портала в unit-тестах живут в
-подмене репозитория — так сервисный слой проверяется без PostgreSQL. Настоящие серверы
-нужны только слою интеграционных тестов.
+`Redis` заменяется подменой в памяти: проверяется отображение ключей и JSON в репозитории, а не
+работа самого `Redis`. Учётные записи портала в unit-тестах живут в подмене репозитория — так
+сервисный слой проверяется без PostgreSQL. Настоящие серверы нужны только слою интеграционных
+тестов.
 """
 
 from collections.abc import AsyncIterator, Sequence
@@ -19,13 +19,17 @@ type StringSet = set[str]
 
 
 class InMemoryPipeline:
-    """Конвейер команд подмены Redis: копит TTL и применяет их по `execute`."""
+    """Конвейер команд подмены `Redis`: копит TTL и применяет их по `execute`.
+
+    Запоминает назначения TTL и применяет их к `InMemoryRedis` при `execute`. Поддерживает `nx` для
+    ключей, которым TTL ещё не назначен.
+    """
 
     def __init__(self, storage: InMemoryRedis) -> None:
-        """Инициализация конвейера.
+        """Инициализация класса.
 
         Args:
-            storage (InMemoryRedis): Подмена Redis, в которую применяются команды.
+            storage (InMemoryRedis): Подмена `Redis`, в которую применяются команды.
         """
         self._storage = storage
         self._scheduled: list[tuple[str, int, bool]] = []
@@ -39,16 +43,19 @@ class InMemoryPipeline:
         return self
 
     async def __aexit__(self, *_: object) -> None:
-        """Выходит из контекста конвейера, оставляя команды невыполненными."""
+        """Выходит из контекста конвейера, оставляя команды невыполненными.
+
+        Args:
+            *_ (object): Неиспользуемые аргументы вызывающего кода.
+        """
 
     def expire(self, key: str, ttl: int, *, nx: bool = False) -> None:
         """Откладывает назначение времени жизни ключа до `execute`.
 
         Args:
-            key (str): Ключ Redis.
+            key (str): Ключ `Redis`.
             ttl (int): Время жизни ключа в секундах.
-            nx (bool, optional): Назначать срок только ключу без TTL, как `EXPIRE ... NX`.
-                Defaults to False.
+            nx (bool): Назначать срок только ключу без TTL, как `EXPIRE ... NX`.
         """
         self._scheduled.append((key, ttl, nx))
 
@@ -56,7 +63,7 @@ class InMemoryPipeline:
         """Применяет отложенные команды.
 
         Returns:
-            list[bool]: Результат каждой команды, как у Redis.
+            list[bool]: Результат каждой команды, как у `Redis`.
         """
         applied: list[bool] = []
 
@@ -72,18 +79,19 @@ class InMemoryPipeline:
 
 
 class InMemoryRedis:
-    """Подмена клиента Redis: значения и время жизни ключей в памяти.
+    """Подмена клиента `Redis` с хранилищем в памяти.
 
-    Повторяет только те вызовы, которые использует `PublicJWKRepository`:
-    `set`, `get`, `mget`, `scan_iter` и `pipeline`.
+    Поддерживает используемые репозиториями операции со строками, множествами, масками ключей и
+    назначением TTL. Время жизни записывается как метаданные и не удаляет значения по часам; флаг
+    `unavailable` имитирует отказ хранилища.
     """
 
     def __init__(self, *, unavailable: bool = False) -> None:
-        """Инициализация пустого хранилища.
+        """Инициализация класса.
 
         Args:
-            unavailable (bool, optional): Признак недоступного Redis: любое обращение к
-                хранилищу падает, как при отсутствии соединения. Defaults to False.
+            unavailable (bool): Признак недоступного `Redis`: любое обращение к хранилищу падает,
+                как при отсутствии соединения.
         """
         self.values: dict[str, str] = {}
         self.ttl: dict[str, int] = {}
@@ -94,10 +102,9 @@ class InMemoryRedis:
         """Сохраняет значение по ключу.
 
         Args:
-            key (str): Ключ Redis.
+            key (str): Ключ `Redis`.
             value (str): Значение ключа.
-            ex (int | None, optional): Время жизни ключа в секундах, как `EX` у Redis.
-                Defaults to None.
+            ex (int | None): Время жизни ключа в секундах, как `EX` у `Redis`.
         """
         self._ensure_available()
 
@@ -110,10 +117,10 @@ class InMemoryRedis:
         """Возвращает значение ключа.
 
         Args:
-            key (str): Ключ Redis.
+            key (str): Ключ `Redis`.
 
         Returns:
-            str | None: Значение ключа или None, если ключа нет.
+            str | None: Значение ключа или `None`, если ключа нет.
         """
         self._ensure_available()
 
@@ -123,24 +130,24 @@ class InMemoryRedis:
         """Сообщает, есть ли значение по ключу.
 
         Args:
-            key (str): Ключ Redis.
+            key (str): Ключ `Redis`.
 
         Returns:
-            int: 1, если ключ есть, иначе 0, как у Redis.
+            int: `1`, если ключ есть, иначе `0`, как у `Redis`.
         """
         self._ensure_available()
 
         return int(key in self.values)
 
     async def sadd(self, key: str, value: str) -> int:
-        """Добавляет значение в множество, как `SADD` у Redis.
+        """Добавляет значение в множество, как `SADD` у `Redis`.
 
         Args:
             key (str): Ключ множества.
             value (str): Добавляемое значение.
 
         Returns:
-            int: 1, если значение добавлено, иначе 0, как у Redis.
+            int: `1`, если значение добавлено, иначе `0`, как у `Redis`.
         """
         self._ensure_available()
 
@@ -154,13 +161,13 @@ class InMemoryRedis:
         return 1
 
     async def smembers(self, key: str) -> StringSet:
-        """Возвращает множество по ключу, как `SMEMBERS` у Redis.
+        """Возвращает множество по ключу, как `SMEMBERS` у `Redis`.
 
         Args:
             key (str): Ключ множества.
 
         Returns:
-            set[str]: Члены множества.
+            StringSet: Члены множества.
         """
         self._ensure_available()
 
@@ -170,7 +177,7 @@ class InMemoryRedis:
         """Возвращает значения нескольких ключей.
 
         Args:
-            keys (Sequence[str]): Ключи Redis.
+            keys (Sequence[str]): Ключи `Redis`.
 
         Returns:
             list[str | None]: Значения в порядке переданных ключей.
@@ -180,13 +187,13 @@ class InMemoryRedis:
         return [self.values.get(key) for key in keys]
 
     async def scan_iter(self, match: str | None = None) -> AsyncIterator[str]:
-        """Перебирает ключи по glob-маске, как `scan_iter` Redis.
+        """Перебирает ключи по glob-маске, как `scan_iter` `Redis`.
 
         Args:
-            match (str | None, optional): Glob-маска ключей. Defaults to None.
+            match (str | None): Glob-маска ключей.
 
         Yields:
-            AsyncIterator[str]: Ключи, подходящие под маску.
+            str: Ключи, подходящие под маску.
         """
         self._ensure_available()
 
@@ -210,7 +217,7 @@ class InMemoryRedis:
         """Проверяет доступность хранилища.
 
         Raises:
-            ConnectionError: Если подмена создана с признаком недоступного Redis.
+            ConnectionError: Если подмена создана с признаком недоступного `Redis`.
         """
         if self._unavailable:
             msg = "Redis is unreachable."
@@ -218,16 +225,16 @@ class InMemoryRedis:
 
 
 def as_redis(double: InMemoryRedis) -> Redis:
-    """Приводит подмену к типу клиента Redis.
+    """Приводит подмену к типу клиента `Redis`.
 
-    Подмена повторяет только вызовы, нужные репозиторию, но не наследует `Redis`:
-    наследование потребовало бы совпадения подписей всего клиента.
+    Подмена повторяет только вызовы, нужные репозиторию, но не наследует `Redis`: наследование
+    потребовало бы совпадения подписей всего клиента.
 
     Args:
         double (InMemoryRedis): Подмена клиента.
 
     Returns:
-        Redis: Тот же объект в типе клиента Redis.
+        Redis: Тот же объект в типе клиента `Redis`.
     """
     return cast("Redis", double)
 
@@ -235,14 +242,14 @@ def as_redis(double: InMemoryRedis) -> Redis:
 class InMemoryUserRepository:
     """Подмена репозитория учётных записей: учётные записи в памяти.
 
-    Повторяет только те вызовы, которые нужны сервису учётных записей: поиск по логину
-    и по адресу и сохранение записи. Адрес сравнивается без учёта регистра — как
-    функциональный индекс `lower(email)` в БД. Значения, которые проставляет сама БД
-    (идентификатор, роль, метки времени), подмена не подставляет.
+    Повторяет только те вызовы, которые нужны сервису учётных записей: поиск по логину и по адресу
+    и сохранение записи. Адрес сравнивается без учёта регистра — как функциональный индекс
+    `lower(email)` в БД. Значения, которые проставляет сама БД (идентификатор, роль, метки
+    времени), подмена не подставляет.
     """
 
     def __init__(self) -> None:
-        """Инициализация пустого хранилища."""
+        """Инициализация класса."""
         self.users: list[User] = []
 
     async def get(self, user_id: int) -> User | None:
@@ -252,7 +259,7 @@ class InMemoryUserRepository:
             user_id (int): Идентификатор учётной записи.
 
         Returns:
-            User | None: Учётная запись или None, если её нет.
+            User | None: Учётная запись или `None`, если её нет.
         """
         return next((user for user in self.users if user.id == user_id), None)
 
@@ -263,7 +270,7 @@ class InMemoryUserRepository:
             username (str): Логин учётной записи.
 
         Returns:
-            User | None: Учётная запись или None, если логин ещё свободен.
+            User | None: Учётная запись или `None`, если логин ещё свободен.
         """
         return next((user for user in self.users if user.username == username), None)
 
@@ -274,7 +281,7 @@ class InMemoryUserRepository:
             email (str): Адрес электронной почты учётной записи.
 
         Returns:
-            User | None: Учётная запись или None, если адрес ещё свободен.
+            User | None: Учётная запись или `None`, если адрес ещё свободен.
         """
         lowered_email = email.lower()
 
@@ -292,8 +299,8 @@ class InMemoryUserRepository:
 def as_user_repository(double: InMemoryUserRepository) -> UserRepository:
     """Приводит подмену к типу репозитория учётных записей.
 
-    Подмена повторяет только вызовы, нужные сервису, но не наследует репозиторий:
-    наследование потребовало бы настоящей сессии БД.
+    Подмена повторяет только вызовы, нужные сервису, но не наследует репозиторий: наследование
+    потребовало бы настоящей сессии БД.
 
     Args:
         double (InMemoryUserRepository): Подмена репозитория.

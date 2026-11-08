@@ -85,10 +85,10 @@ async def get_user(
 
 
 def _access_token_config() -> AccessTokenConfig:
-    """Собирает конфигурацию access-токена из настроек приложения.
+    """Собирает конфигурацию `access`-токена из настроек приложения.
 
     Returns:
-        AccessTokenConfig: Конфигурация access-токена.
+        AccessTokenConfig: Конфигурация `access`-токена.
     """
     return AccessTokenConfig(
         issuer=config.app.NAME,
@@ -98,10 +98,10 @@ def _access_token_config() -> AccessTokenConfig:
 
 
 def _refresh_token_config() -> RefreshTokenConfig:
-    """Собирает конфигурацию refresh-токена из настроек приложения.
+    """Собирает конфигурацию `refresh`-токена из настроек приложения.
 
     Returns:
-        RefreshTokenConfig: Конфигурация refresh-токена.
+        RefreshTokenConfig: Конфигурация `refresh`-токена.
     """
     return RefreshTokenConfig(
         issuer=config.app.NAME,
@@ -111,7 +111,7 @@ def _refresh_token_config() -> RefreshTokenConfig:
 
 
 async def get_sign_access_token() -> SignToken:
-    """Предоставляет use case подписи access-токена.
+    """Предоставляет use case подписи `access`-токена.
 
     Returns:
         SignToken: Use case подписи JWT-токена.
@@ -122,7 +122,7 @@ async def get_sign_access_token() -> SignToken:
 
 
 async def get_sign_refresh_token() -> SignToken:
-    """Предоставляет use case подписи refresh-токена.
+    """Предоставляет use case подписи `refresh`-токена.
 
     Returns:
         SignToken: Use case подписи JWT-токена.
@@ -139,11 +139,11 @@ async def get_issue_token_pair(
     """Предоставляет use case выпуска пары токенов на время запроса.
 
     Args:
-        access (SignToken): Use case подписи access-токена.
-        refresh (SignToken): Use case подписи refresh-токена.
+        access (SignToken): Use case подписи `access`-токена.
+        refresh (SignToken): Use case подписи `refresh`-токена.
 
     Returns:
-        IssueTokenPair: Use case выпуска access- и refresh-токенов.
+        IssueTokenPair: Use case выпуска `access`- и `refresh`-токенов.
     """
     return IssueTokenPair(access, refresh)
 
@@ -151,10 +151,10 @@ async def get_issue_token_pair(
 async def get_verify_access_token(
     client: Annotated[Redis, Depends(get_bounded_client(StorageNumber.KEYS.value))],
 ) -> VerifyToken[AccessTokenClaims]:
-    """Предоставляет use case проверки access-токена на время запроса.
+    """Предоставляет use case проверки `access`-токена на время запроса.
 
     Args:
-        client (Redis): Клиент Redis с опубликованными публичными JWK.
+        client (Redis): Клиент `Redis` с опубликованными публичными JWK.
 
     Returns:
         VerifyToken[AccessTokenClaims]: Use case проверки JWT-токена.
@@ -165,10 +165,10 @@ async def get_verify_access_token(
 async def get_verify_refresh_token(
     client: Annotated[Redis, Depends(get_bounded_client(StorageNumber.KEYS.value))],
 ) -> VerifyToken[RefreshTokenClaims]:
-    """Предоставляет use case проверки refresh-токена на время запроса.
+    """Предоставляет use case проверки `refresh`-токена на время запроса.
 
     Args:
-        client (Redis): Клиент Redis с опубликованными публичными JWK.
+        client (Redis): Клиент `Redis` с опубликованными публичными JWK.
 
     Returns:
         VerifyToken[RefreshTokenClaims]: Use case проверки JWT-токена.
@@ -182,7 +182,7 @@ async def get_ensure_token_active(
     """Предоставляет use case проверки отзыва токена на время запроса.
 
     Args:
-        client (Redis): Клиент Redis с отозванными токенами и сессиями.
+        client (Redis): Клиент `Redis` с отозванными токенами и сессиями.
 
     Returns:
         EnsureTokenActive: Use case проверки, что токен не отозван.
@@ -200,8 +200,8 @@ async def get_revoke_session(
     """Предоставляет use case отзыва сессии на время запроса.
 
     Args:
-        tokens_client (Redis): Клиент Redis с отозванными сессиями.
-        sessions_client (Redis): Клиент Redis с сессиями пользователей.
+        tokens_client (Redis): Клиент `Redis` с отозванными сессиями.
+        sessions_client (Redis): Клиент `Redis` с сессиями пользователей.
 
     Returns:
         RevokeSession: Use case отзыва сессии.
@@ -218,7 +218,7 @@ async def get_revoke_token(
     """Предоставляет use case отзыва отдельного токена на время запроса.
 
     Args:
-        client (Redis): Клиент Redis с отозванными токенами.
+        client (Redis): Клиент `Redis` с отозванными токенами.
 
     Returns:
         RevokeToken: Use case отзыва токена по `jti`.
@@ -232,7 +232,7 @@ async def get_create_session(
     """Предоставляет use case создания сессии на время запроса.
 
     Args:
-        client (Redis): Клиент Redis с сессиями пользователей.
+        client (Redis): Клиент `Redis` с сессиями пользователей.
 
     Returns:
         CreateSession: Use case создания сессии с лимитом активных сессий.
@@ -250,7 +250,7 @@ async def get_slide_session(
     """Предоставляет use case продления сессии на время запроса.
 
     Args:
-        client (Redis): Клиент Redis с сессиями пользователей.
+        client (Redis): Клиент `Redis` с сессиями пользователей.
 
     Returns:
         SlideSession: Use case продления сессии (sliding expiration).
@@ -264,16 +264,16 @@ async def get_rotate_refresh_token(
     revoke_session: Annotated[RevokeSession, Depends(get_revoke_session)],
     tokens_client: Annotated[Redis, Depends(get_bounded_client(StorageNumber.TOKENS.value))],
 ) -> RotateRefreshToken:
-    """Предоставляет use case ротации refresh-токена на время запроса.
+    """Предоставляет use case ротации `refresh`-токена на время запроса.
 
     Args:
         slide (SlideSession): Use case продления сессии.
-        revoke (RevokeToken): Use case отзыва старого refresh-токена.
+        revoke (RevokeToken): Use case отзыва старого `refresh`-токена.
         revoke_session (RevokeSession): Use case отзыва сессии при краже.
-        tokens_client (Redis): Клиент Redis с отозванными токенами и сессиями.
+        tokens_client (Redis): Клиент `Redis` с отозванными токенами и сессиями.
 
     Returns:
-        RotateRefreshToken: Use case ротации refresh-токена.
+        RotateRefreshToken: Use case ротации `refresh`-токена.
     """
     return RotateRefreshToken(
         slide,
@@ -288,10 +288,10 @@ async def get_authorize_access(
     verify: Annotated[VerifyToken[AccessTokenClaims], Depends(get_verify_access_token)],
     ensure_active: Annotated[EnsureTokenActive, Depends(get_ensure_token_active)],
 ) -> Authorize[AccessTokenClaims]:
-    """Предоставляет use case авторизации по access-токену на время запроса.
+    """Предоставляет use case авторизации по `access`-токену на время запроса.
 
     Args:
-        verify (VerifyToken[AccessTokenClaims]): Use case проверки access-токена.
+        verify (VerifyToken[AccessTokenClaims]): Use case проверки `access`-токена.
         ensure_active (EnsureTokenActive): Use case проверки отзыва токена.
 
     Returns:
@@ -304,10 +304,10 @@ async def get_authorize_refresh(
     verify: Annotated[VerifyToken[RefreshTokenClaims], Depends(get_verify_refresh_token)],
     ensure_active: Annotated[EnsureTokenActive, Depends(get_ensure_token_active)],
 ) -> Authorize[RefreshTokenClaims]:
-    """Предоставляет use case авторизации по refresh-токену на время запроса.
+    """Предоставляет use case авторизации по `refresh`-токену на время запроса.
 
     Args:
-        verify (VerifyToken[RefreshTokenClaims]): Use case проверки refresh-токена.
+        verify (VerifyToken[RefreshTokenClaims]): Use case проверки `refresh`-токена.
         ensure_active (EnsureTokenActive): Use case проверки отзыва токена.
 
     Returns:
@@ -320,19 +320,15 @@ async def get_access_token(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(schema)],
     authorize: Annotated[Authorize[AccessTokenClaims], Depends(get_authorize_access)],
 ) -> AccessTokenClaims:
-    """Проверяет Bearer-токен и возвращает его claims.
+    """Проверяет Bearer-токен и возвращает его `claims`.
 
     Args:
         credentials (HTTPAuthorizationCredentials | None): Учётные данные заголовка
             `Authorization`.
-        authorize (Authorize): Use case авторизации запроса.
-
-    Raises:
-        UserAuthorizationError: Токен не передан.
-        JWTDecryptionError: Токен недействителен или уже отозван.
+        authorize (Authorize[AccessTokenClaims]): Use case авторизации запроса.
 
     Returns:
-        AccessTokenClaims: Проверенные claims токена.
+        AccessTokenClaims: Проверенные `claims` токена.
     """
     token = credentials.credentials if credentials else None
 
@@ -343,18 +339,14 @@ async def get_refresh_token(
     authorize: Annotated[Authorize[RefreshTokenClaims], Depends(get_authorize_refresh)],
     refresh_token: Annotated[str | None, Cookie()] = None,
 ) -> RefreshTokenClaims:
-    """Проверяет refresh-токен из cookie и возвращает его claims.
+    """Проверяет `refresh`-токен из cookie и возвращает его `claims`.
 
     Args:
-        authorize (Authorize[RefreshTokenClaims]): Use case авторизации по refresh-токену.
+        authorize (Authorize[RefreshTokenClaims]): Use case авторизации по `refresh`-токену.
         refresh_token (str | None): Refresh-токен из HTTP-only cookie.
 
-    Raises:
-        UserAuthorizationError: Refresh-токен не передан.
-        JWTDecryptionError: Токен недействителен или уже отозван.
-
     Returns:
-        RefreshTokenClaims: Проверенные claims refresh-токена.
+        RefreshTokenClaims: Проверенные `claims` `refresh`-токена.
     """
     return await authorize(refresh_token)
 
@@ -363,21 +355,20 @@ async def get_refresh_claims(
     verify: Annotated[VerifyToken[RefreshTokenClaims], Depends(get_verify_refresh_token)],
     refresh_token: Annotated[str | None, Cookie()] = None,
 ) -> RefreshTokenClaims:
-    """Проверяет refresh-токен из cookie без проверки отзыва.
+    """Проверяет `refresh`-токен из cookie без проверки отзыва.
 
-    Отзыв сессии и обнаружение повторного использования выполняет use case ротации:
-    ему нужен предъявленный токен, чтобы отозвать сессию целиком при краже.
+    Отзыв сессии и обнаружение повторного использования выполняет use case ротации: ему нужен
+    предъявленный токен, чтобы отозвать сессию целиком при краже.
 
     Args:
-        verify (VerifyToken[RefreshTokenClaims]): Use case проверки refresh-токена.
+        verify (VerifyToken[RefreshTokenClaims]): Use case проверки `refresh`-токена.
         refresh_token (str | None): Refresh-токен из HTTP-only cookie.
+
+    Returns:
+        RefreshTokenClaims: Проверенные `claims` `refresh`-токена.
 
     Raises:
         UserAuthorizationError: Refresh-токен не передан.
-        JWTDecryptionError: Токен недействителен или просрочен.
-
-    Returns:
-        RefreshTokenClaims: Проверенные claims refresh-токена.
     """
     if refresh_token is None:
         msg = "Bearer token is missing."
@@ -393,15 +384,14 @@ async def get_current_user(
     """Возвращает учётную запись владельца проверенного токена.
 
     Args:
-        claims (AccessTokenClaims): Проверенные claims токена.
+        claims (AccessTokenClaims): Проверенные `claims` токена.
         fetch_user (GetUser): Use case получения учётной записи по идентификатору.
-
-    Raises:
-        JWTDecryptionError: В `sub` токена не числовой идентификатор пользователя.
-        UserIdentificationError: Учётная запись из `sub` не найдена.
 
     Returns:
         User: Учётная запись владельца токена.
+
+    Raises:
+        JWTDecryptionError: В `sub` токена не числовой идентификатор пользователя.
     """
     try:
         user_id = int(claims["sub"])

@@ -4,10 +4,10 @@ from ._base import RedisRepository
 
 
 class RedisRevokedSessionsRepository(RedisRepository):
-    """Репозиторий отозванных сессий в Redis.
+    """Репозиторий отозванных сессий в `Redis`.
 
-    Отозванная сессия хранится по ключу `session:revoked:<sid>` с TTL до истечения её
-    refresh-токена; проверка токенов сверяется с этим ключом по `sid`.
+    Отозванная сессия хранится по ключу `session:revoked:<sid>` с TTL до истечения её `refresh`-
+    токена; проверка токенов сверяется с этим ключом по `sid`.
     """
 
     _key_template = Template("session:revoked:$sid")
@@ -18,9 +18,6 @@ class RedisRevokedSessionsRepository(RedisRepository):
         Args:
             sid (str): Идентификатор сессии.
             ttl (int): Оставшееся время жизни сессии в секундах.
-
-        Raises:
-            RepositoryError: Если обращение к Redis завершилось ошибкой.
         """
         key = self._key_template.substitute(sid=sid)
 
@@ -33,11 +30,8 @@ class RedisRevokedSessionsRepository(RedisRepository):
         Args:
             sid (str): Идентификатор сессии.
 
-        Raises:
-            RepositoryError: Если обращение к Redis завершилось ошибкой.
-
         Returns:
-            bool: True, если сессия помечена отозванной.
+            bool: `True`, если сессия помечена отозванной.
         """
         key = self._key_template.substitute(sid=sid)
 

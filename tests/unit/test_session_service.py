@@ -58,11 +58,15 @@ async def test_parse_user_agent_detects_platform_and_browser(
     platform: str,
     browser: str,
 ) -> None:
-    """Разбор известных User-Agent.
+    """Разбор известных `User-Agent`.
 
-    Given: строка User-Agent известного браузера и платформы,
-    When: сервис разбирает заголовок,
+    Given: строка `User-Agent` известного браузера и платформы, When: сервис разбирает заголовок,
     Then: он возвращает ожидаемые платформу и браузер.
+
+    Args:
+        user_agent (str): Строка `User-Agent` для определения платформы и браузера.
+        platform (str): Ожидаемая платформа или `None`, если маркер отсутствует.
+        browser (str): Ожидаемый браузер или `None`, если маркер отсутствует.
     """
     # Когда
     parsed = parse_user_agent(user_agent)
@@ -72,11 +76,10 @@ async def test_parse_user_agent_detects_platform_and_browser(
 
 
 async def test_parse_user_agent_returns_none_for_unknown() -> None:
-    """Разбор неизвестного User-Agent.
+    """Разбор неизвестного `User-Agent`.
 
-    Given: строка без известных признаков платформы и браузера,
-    When: сервис разбирает заголовок,
-    Then: он возвращает пару из None.
+    Given: строка без известных признаков платформы и браузера, When: сервис разбирает заголовок,
+    Then: он возвращает пару из `None`.
     """
     # Когда
     parsed = parse_user_agent("curl/8.0.1")
@@ -90,9 +93,11 @@ async def test_create_session_stores_login_context(
 ) -> None:
     """Создание сессии с контекстом входа.
 
-    Given: сервис создания сессии и IP с User-Agent входа,
-    When: сессия создаётся,
-    Then: контекст фиксируется в сессии и переживает чтение из хранилища.
+    Given: сервис создания сессии и IP с `User-Agent` входа, When: сессия создаётся, Then: контекст
+    фиксируется в сессии и переживает чтение из хранилища.
+
+    Args:
+        session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены `Redis`.
     """
     # Дано
     create_session = CreateSession(session_repository, TTL_SECONDS, max_active=5)
@@ -119,9 +124,11 @@ async def test_create_session_revokes_oldest_over_limit(
 ) -> None:
     """Создание сессии сверх лимита отзывает самую старую.
 
-    Given: лимит активных сессий равен двум,
-    When: создаётся третья сессия,
-    Then: самая старая сессия отзывается, а новых остаётся две.
+    Given: лимит активных сессий равен двум, When: создаётся третья сессия, Then: самая старая
+    сессия отзывается, а новых остаётся две.
+
+    Args:
+        session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены `Redis`.
     """
     # Дано
     create_session = CreateSession(session_repository, TTL_SECONDS, max_active=SESSION_LIMIT)
@@ -144,9 +151,11 @@ async def test_list_sessions_returns_active_sorted_newest_first(
 ) -> None:
     """Список активных сессий отсортирован от новых к старым.
 
-    Given: две активные сессии одного пользователя,
-    When: сервис запрашивает список активных сессий,
-    Then: он возвращает обе, первой — созданную позже.
+    Given: две активные сессии одного пользователя, When: сервис запрашивает список активных
+    сессий, Then: он возвращает обе, первой — созданную позже.
+
+    Args:
+        session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены `Redis`.
     """
     # Дано
     now = datetime.now(UTC)
@@ -179,9 +188,14 @@ async def test_close_session_revokes_owned_session(
 ) -> None:
     """Закрытие собственной сессии.
 
-    Given: активная сессия пользователя,
-    When: сервис закрывает её по `sid`,
-    Then: сессия помечается отозванной до конца срока действия.
+    Given: активная сессия пользователя, When: сервис закрывает её по `sid`, Then: сессия
+    помечается отозванной до конца срока действия.
+
+    Args:
+        revoked_sessions_repository (RedisRevokedSessionsRepository): Репозиторий маркеров отзыва
+            сессий поверх подмены `Redis`.
+        session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены `Redis`.
+        redis_double (InMemoryRedis): Подмена `Redis` с хранилищем значений и TTL в памяти.
     """
     # Дано
     create_session = CreateSession(session_repository, TTL_SECONDS, max_active=5)
@@ -206,9 +220,13 @@ async def test_close_session_is_idempotent(
 ) -> None:
     """Повторное закрытие сессии не поднимает ошибку.
 
-    Given: сессия уже отозвана,
-    When: сервис закрывает её повторно,
-    Then: вызов завершается без ошибки.
+    Given: сессия уже отозвана, When: сервис закрывает её повторно, Then: вызов завершается без
+    ошибки.
+
+    Args:
+        revoked_sessions_repository (RedisRevokedSessionsRepository): Репозиторий маркеров отзыва
+            сессий поверх подмены `Redis`.
+        session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены `Redis`.
     """
     # Дано
     create_session = CreateSession(session_repository, TTL_SECONDS, max_active=5)
@@ -226,9 +244,13 @@ async def test_close_session_raises_for_foreign_session(
 ) -> None:
     """Закрытие чужой сессии отклоняется.
 
-    Given: сессия другого пользователя,
-    When: сервис пытается закрыть её от имени текущего пользователя,
-    Then: он сообщает, что сессия не найдена.
+    Given: сессия другого пользователя, When: сервис пытается закрыть её от имени текущего
+    пользователя, Then: он сообщает, что сессия не найдена.
+
+    Args:
+        revoked_sessions_repository (RedisRevokedSessionsRepository): Репозиторий маркеров отзыва
+            сессий поверх подмены `Redis`.
+        session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены `Redis`.
     """
     # Дано
     now = datetime.now(UTC)
@@ -253,9 +275,13 @@ async def test_close_session_raises_for_unknown_session(
 ) -> None:
     """Закрытие несуществующей сессии отклоняется.
 
-    Given: сессии с указанным `sid` нет,
-    When: сервис пытается закрыть её,
-    Then: он сообщает, что сессия не найдена.
+    Given: сессии с указанным `sid` нет, When: сервис пытается закрыть её, Then: он сообщает, что
+    сессия не найдена.
+
+    Args:
+        revoked_sessions_repository (RedisRevokedSessionsRepository): Репозиторий маркеров отзыва
+            сессий поверх подмены `Redis`.
+        session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены `Redis`.
     """
     # Когда / Тогда
     close_session = CloseSession(revoked_sessions_repository, session_repository)
@@ -269,9 +295,13 @@ async def test_close_other_sessions_keeps_current(
 ) -> None:
     """Закрытие всех сессий, кроме текущей.
 
-    Given: две активные сессии пользователя,
-    When: сервис закрывает все сессии, кроме текущей,
+    Given: две активные сессии пользователя, When: сервис закрывает все сессии, кроме текущей,
     Then: вторая отзывается, а текущая остаётся активной.
+
+    Args:
+        revoked_sessions_repository (RedisRevokedSessionsRepository): Репозиторий маркеров отзыва
+            сессий поверх подмены `Redis`.
+        session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены `Redis`.
     """
     # Дано
     now = datetime.now(UTC)

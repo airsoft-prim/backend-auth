@@ -20,7 +20,14 @@ APP_DESCRIPTION: Final[str] = """
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
-    """Lifespan приложения FastAPI."""
+    """Запускает фоновую ротацию ключей перед обслуживанием запросов.
+
+    Args:
+        _ (FastAPI): Экземпляр приложения; внутри контекста не используется.
+
+    Yields:
+        None: Управление приложению после запуска задачи ротации.
+    """
     logger.info("Application starting up...")
 
     get_rotation_daemon().start()

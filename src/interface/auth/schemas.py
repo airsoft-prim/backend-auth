@@ -22,7 +22,11 @@ Username = Annotated[
 
 
 class RegisterRequestBody(BaseModel):
-    """Тело запроса на регистрацию пользователя."""
+    """Тело запроса на регистрацию пользователя.
+
+    Проверяет формат логина, адрес почты, длину пароля `8`–`72` символа и наличие требуемых классов
+    символов. Пароль представлен `SecretStr`.
+    """
 
     username: Username = Field(description="Логин учётной записи.", examples=["Oidaho"])
     email: EmailStr = Field(description="Адрес электронной почты.", examples=["user@example.ru"])
@@ -50,17 +54,21 @@ class RegisterRequestBody(BaseModel):
 
 
 class LoginRequestBody(BaseModel):
-    """Тело запроса на вход в систему."""
+    """Тело запроса на вход в систему.
+
+    Проверяет формат логина и принимает пароль как `SecretStr`. Соответствие пароля сохранённому
+    хешу проверяется в `LoginUser`.
+    """
 
     username: Username = Field(description="Логин учётной записи.", examples=["Oidaho"])
     password: SecretStr = Field(description="Пароль учётной записи.")
 
 
 class AccessToken(BaseModel):
-    """Ответ с выпущенным access-токеном (вход или обновление).
+    """Ответ с выпущенным `access`-токеном.
 
-    Refresh-токен не входит в тело ответа: он передаётся в HTTP-only cookie.
-    Набор полей обоснован соглашением RFC 6749 §5.1.
+    Возвращается при обновлении токенов и содержит `access_token`, `token_type` и `expires_in` в
+    секундах. Refresh-токен передаётся отдельно в HTTP-only cookie.
     """
 
     access_token: str = Field(description="JWT токен доступа.")
@@ -70,7 +78,11 @@ class AccessToken(BaseModel):
 
 
 class UserData(BaseModel):
-    """Данные учётной записи, который сервис сообщает её владельцу."""
+    """Данные учётной записи, который сервис сообщает её владельцу.
+
+    Сериализует идентификатор, логин, почту, роль и временные метки из атрибутов сущности. Поле
+    `role` читает `system_role`; хеш пароля в ответ не входит.
+    """
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 

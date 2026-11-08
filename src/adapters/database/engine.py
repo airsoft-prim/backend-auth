@@ -16,7 +16,7 @@ def _create_engine(config: Configs) -> AsyncEngine:
         config (Configs): Конфигурация проекта.
 
     Returns:
-        Engine: Движок SQLAlchemy
+        AsyncEngine: Движок SQLAlchemy
     """
     return create_async_engine(
         config.database.DSN.encoded_string(),

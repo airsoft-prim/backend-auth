@@ -6,7 +6,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class SecurityConfiguration(BaseSettings):
-    """Секция конфигурации безопасности."""
+    """Секция конфигурации безопасности.
+
+    Читает настройки ключей, сроков жизни токенов, числа сессий и лимита запросов. Интервалы заданы
+    в секундах; лимиты и сроки жизни положительны. `REQUEST_RATE_LIMIT` читается из
+    `SUCURITY_REQUEST_RATE_LIMIT`, остальные поля — с префиксом `SECURITY_`.
+    """
 
     model_config = SettingsConfigDict(env_prefix="SECURITY_")
 

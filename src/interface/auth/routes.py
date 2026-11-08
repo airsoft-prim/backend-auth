@@ -39,7 +39,7 @@ async def register_user(
     body: Annotated[RegisterRequestBody, Body(...)],
     register: Annotated[RegisterUser, Depends(get_register_user)],
 ) -> None:
-    """Функция регистрации нового пользователя.
+    """Регистрирует учётную запись по данным запроса.
 
     Args:
         body (RegisterRequestBody): Данные новой учётной записи.
@@ -61,15 +61,15 @@ async def login_user(  # noqa: PLR0913, PLR0917
     create_session: Annotated[CreateSession, Depends(get_create_session)],
     sign_refresh_token: Annotated[SignToken, Depends(get_sign_refresh_token)],
 ) -> None:
-    """Функция входа в систему.
+    """Открывает сессию и записывает `refresh`-токен в cookie.
 
     Args:
-        response (Response): Ответ, в который кладётся refresh-токен (cookie).
-        request (Request): Запрос, из которого читается контекст входа (IP и User-Agent).
+        response (Response): Ответ, в который кладётся `refresh`-токен (cookie).
+        request (Request): Запрос, из которого читается контекст входа (IP и `User-Agent`).
         body (LoginRequestBody): Учётные данные пользователя.
         login (LoginUser): Use case входа.
         create_session (CreateSession): Use case создания сессии.
-        sign_refresh_token (SignToken): Use case подписи refresh-токена.
+        sign_refresh_token (SignToken): Use case подписи `refresh`-токена.
     """
     subject, _ = await login(body.username, body.password.get_secret_value())
 
@@ -90,7 +90,7 @@ async def login_user(  # noqa: PLR0913, PLR0917
 
 @router.get("/me", **ME_DOCS)
 async def get_me(current_user: Annotated[User, Depends(get_current_user)]) -> UserData:
-    """Функция получения данных учётной записи владельца токена.
+    """Возвращает профиль владельца проверенного токена.
 
     Args:
         current_user (User): Учётная запись владельца проверенного токена.
@@ -109,17 +109,20 @@ async def refresh_access_token(
     fetch_user: Annotated[GetUser, Depends(get_user)],
     issue_tokens: Annotated[IssueTokenPair, Depends(get_issue_token_pair)],
 ) -> AccessToken:
-    """Функция выпуска нового access-токена по действующему refresh-токену.
+    """Обновляет токены текущей сессии.
+
+    Продлевает сессию, отзывает предъявленный `refresh`-токен и перечитывает роль из БД. Новый
+    `refresh`-токен записывает в HTTP-only cookie; `access`-токен возвращает в теле.
 
     Args:
-        response (Response): Ответ, в который кладётся новый refresh-токен (cookie).
-        claims (RefreshTokenClaims): Проверенные claims refresh-токена.
-        rotate (RotateRefreshToken): Use case ротации refresh-токена.
+        response (Response): Ответ, в который кладётся новый `refresh`-токен (cookie).
+        claims (RefreshTokenClaims): Проверенные `claims` `refresh`-токена.
+        rotate (RotateRefreshToken): Use case ротации `refresh`-токена.
         fetch_user (GetUser): Use case получения учётной записи для роли.
         issue_tokens (IssueTokenPair): Use case выпуска пары токенов.
 
     Returns:
-        AccessToken: Новый access-токен с параметрами.
+        AccessToken: Новый `access`-токен с параметрами.
     """
     await rotate(claims)
 
@@ -146,12 +149,12 @@ async def logout_user(
     revoke: Annotated[RevokeSession, Depends(get_revoke_session)],
     response: Response,
 ) -> None:
-    """Функция выхода из системы.
+    """Отзывает сессию и удаляет cookie `refresh`-токена.
 
     Args:
-        claims (RefreshTokenClaims): Проверенные claims refresh-токена сессии.
+        claims (RefreshTokenClaims): Проверенные `claims` `refresh`-токена сессии.
         revoke (RevokeSession): Use case отзыва сессии.
-        response (Response): Ответ, из которого удаляется refresh-токен (cookie).
+        response (Response): Ответ, из которого удаляется `refresh`-токен (cookie).
     """
     await revoke(claims)
     response.delete_cookie(REFRESH_TOKEN_COOKIE)

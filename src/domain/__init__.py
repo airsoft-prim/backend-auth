@@ -1,3 +1,10 @@
+"""Доменная модель аутентификации и сессий.
+
+Определяет сущности, роли, типы и `claims` токенов, ошибки и протоколы доступа к ресурсам.
+
+Задаёт контракты прикладного слоя без зависимости от `FastAPI`, `Redis` и SQLAlchemy.
+"""
+
 from .entities import User
 from .enums import NiftyStrEnum, TokenType, UserRole
 from .errors import (

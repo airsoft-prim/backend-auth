@@ -28,8 +28,7 @@ def _eddsa_key() -> dict[str, str]:
 def test_jsonwebkeyset_passes_eddsa_key_through() -> None:
     """Публичный ключ EdDSA.
 
-    Given: документ JWKS с публичным ключом Ed25519,
-    When: документ приводится к схеме ответа,
+    Given: документ JWKS с публичным ключом Ed25519, When: документ приводится к схеме ответа,
     Then: набор отдаёт этот ключ без потери полей.
     """
     # Дано
@@ -45,9 +44,8 @@ def test_jsonwebkeyset_passes_eddsa_key_through() -> None:
 def test_jsonwebkeyset_defaults_to_empty_key_set() -> None:
     """Пустой документ JWKS.
 
-    Given: ключи ещё не публиковались,
-    When: ответ собирается без набора ключей,
-    Then: набор пуст — потребителю отдаётся корректный пустой ответ.
+    Given: ключи ещё не публиковались, When: ответ собирается без набора ключей, Then: набор пуст —
+    потребителю отдаётся корректный пустой ответ.
     """
     # Когда
     key_set = JSONWebKeySet.model_validate({})
@@ -59,9 +57,8 @@ def test_jsonwebkeyset_defaults_to_empty_key_set() -> None:
 def test_jsonwebkeyset_rejects_unsupported_curve() -> None:
     """Кривая, которую сервис не выпускает.
 
-    Given: документ JWKS с кривой P-256 у ключа типа OKP,
-    When: документ приводится к схеме ответа,
-    Then: схема отвергает ключ: набор публикует только Ed25519.
+    Given: документ JWKS с кривой P-`256` у ключа типа OKP, When: документ приводится к схеме
+    ответа, Then: схема отвергает ключ: набор публикует только Ed25519.
     """
     # Дано
     document = {"keys": [_eddsa_key() | {"crv": "P-256"}]}
@@ -74,8 +71,7 @@ def test_jsonwebkeyset_rejects_unsupported_curve() -> None:
 def test_jsonwebkeyset_rejects_key_without_public_part() -> None:
     """Ключ без публичной части.
 
-    Given: ключ без параметра `x` с публичной частью,
-    When: документ приводится к схеме ответа,
+    Given: ключ без параметра `x` с публичной частью, When: документ приводится к схеме ответа,
     Then: схема отвергает ключ: публиковать нечего.
     """
     # Дано

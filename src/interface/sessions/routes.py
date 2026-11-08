@@ -22,7 +22,7 @@ async def get_all_sessions(
     current: Annotated[CurrentSession, Depends(get_current_session)],
     list_sessions: Annotated[ListSessions, Depends(get_list_sessions)],
 ) -> list[SessionData]:
-    """Функция получения активных сессий владельца токена.
+    """Возвращает активные сессии владельца `refresh`-токена.
 
     Args:
         current (CurrentSession): Владелец и `sid` сессии запроса.
@@ -54,7 +54,7 @@ async def close_session(
     current: Annotated[CurrentSession, Depends(get_current_session)],
     close: Annotated[CloseSession, Depends(get_close_session)],
 ) -> None:
-    """Функция закрытия выбранной сессии.
+    """Закрывает выбранную сессию текущего пользователя.
 
     Args:
         session_id (str): Идентификатор закрываемой сессии (`sid`).
@@ -69,7 +69,7 @@ async def close_other_sessions(
     current: Annotated[CurrentSession, Depends(get_current_session)],
     close_others: Annotated[CloseOtherSessions, Depends(get_close_other_sessions)],
 ) -> None:
-    """Функция закрытия всех сессий, кроме текущей.
+    """Закрывает сессии пользователя, кроме текущей.
 
     Args:
         current (CurrentSession): Владелец и `sid` сессии запроса.

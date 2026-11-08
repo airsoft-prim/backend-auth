@@ -1,3 +1,10 @@
+"""Прикладные сценарии сервиса аутентификации.
+
+Объединяет регистрацию, вход, работу с сессиями, выпуск и проверку JWT и публикацию JWK.
+
+Использует доменные сущности и порты; вызывается HTTP-интерфейсом и планировщиком.
+"""
+
 from ._base import AbstractUseCase
 from .auth import GetUser, LoginUser, RegisterUser
 from .jwk import CollectJwks, RotateJwk

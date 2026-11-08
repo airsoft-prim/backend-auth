@@ -35,17 +35,17 @@ def logout_client(
     revoked_sessions_repository: RedisRevokedSessionsRepository,
     session_repository: RedisSessionRepository,
 ) -> ASGIClient:
-    """Отдаёт клиент выхода с подменой проверки refresh-токена и хранилища отзыва.
+    """Отдаёт клиент выхода с подменой проверки `refresh`-токена и хранилища отзыва.
 
     Args:
         api_app (FastAPI): Приложение под тестом.
-        verify_refresh_token (VerifyToken[RefreshTokenClaims]): Use case проверки
-            refresh-токенов поверх подмены Redis с опубликованными JWK.
-        blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий
-            отозванных токенов поверх подмены Redis.
-        revoked_sessions_repository (RedisRevokedSessionsRepository): Репозиторий
-            отозванных сессий поверх подмены Redis.
-        session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены Redis.
+        verify_refresh_token (VerifyToken[RefreshTokenClaims]): Use case проверки `refresh`-
+            токенов поверх подмены `Redis` с опубликованными JWK.
+        blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий отозванных
+            токенов поверх подмены `Redis`.
+        revoked_sessions_repository (RedisRevokedSessionsRepository): Репозиторий отозванных сессий
+            поверх подмены `Redis`.
+        session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены `Redis`.
 
     Returns:
         ASGIClient: Клиент маршрута выхода.
@@ -65,14 +65,14 @@ async def _issue_token(
     rotate_jwk: RotateJwk,
     sign_refresh_token: SignToken,
 ) -> str:
-    """Публикует ключ и выпускает refresh-токен для проверки выхода.
+    """Публикует ключ и выпускает `refresh`-токен для проверки выхода.
 
     Args:
         rotate_jwk (RotateJwk): Use case генерации и публикации ключей.
-        sign_refresh_token (SignToken): Use case выпуска refresh-токенов.
+        sign_refresh_token (SignToken): Use case выпуска `refresh`-токенов.
 
     Returns:
-        str: Подписанный refresh-токен.
+        str: Подписанный `refresh`-токен.
     """
     await rotate_jwk(TTL_SECONDS)
     token, _ = await sign_refresh_token(SUBJECT, SID)
@@ -81,7 +81,7 @@ async def _issue_token(
 
 
 def _cookie(token: str) -> dict[str, str]:
-    """Собирает заголовок cookie с refresh-токеном.
+    """Собирает заголовок cookie с `refresh`-токеном.
 
     Args:
         token (str): Refresh-токен.
@@ -98,12 +98,17 @@ async def test_logout_revokes_token_and_returns_no_content(
     sign_refresh_token: SignToken,
     redis_double: InMemoryRedis,
 ) -> None:
-    """Выход с действующим refresh-токеном.
+    """Выход с действующим `refresh`-токеном.
 
-    Given: клиент с действующим refresh-токеном,
-    When: он завершает сессию,
-    Then: приходит 204 без тела, а сессия (`sid`) попадает в блэклист до конца срока
-    действия refresh-токена.
+    Given: клиент с действующим `refresh`-токеном, When: он завершает сессию, Then: приходит `204`
+    без тела, а сессия (`sid`) попадает в блэклист до конца срока действия `refresh`-токена.
+
+    Args:
+        logout_client (ASGIClient): ASGI-клиент выхода с тестовыми зависимостями.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
+        sign_refresh_token (SignToken): Сценарий подписи `refresh`-токена ключом тестового
+            хранилища.
+        redis_double (InMemoryRedis): Подмена `Redis` с хранилищем значений и TTL в памяти.
     """
     # Дано
     token = await _issue_token(rotate_jwk, sign_refresh_token)
@@ -127,11 +132,16 @@ async def test_logout_rejects_already_revoked_token(
     rotate_jwk: RotateJwk,
     sign_refresh_token: SignToken,
 ) -> None:
-    """Повторный выход с тем же refresh-токеном.
+    """Повторный выход с тем же `refresh`-токеном.
 
-    Given: refresh-токен уже отозван предыдущим выходом,
-    When: клиент повторяет выход с этим токеном,
-    Then: приходит 403: отозванный токен больше не принимается.
+    Given: `refresh`-токен уже отозван предыдущим выходом, When: клиент повторяет выход с этим
+    токеном, Then: приходит `403`: отозванный токен больше не принимается.
+
+    Args:
+        logout_client (ASGIClient): ASGI-клиент выхода с тестовыми зависимостями.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
+        sign_refresh_token (SignToken): Сценарий подписи `refresh`-токена ключом тестового
+            хранилища.
     """
     # Дано
     token = await _issue_token(rotate_jwk, sign_refresh_token)
@@ -149,11 +159,13 @@ async def test_logout_rejects_already_revoked_token(
 
 
 async def test_logout_requires_refresh_cookie(logout_client: ASGIClient) -> None:
-    """Выход без refresh-токена в cookie.
+    """Выход без `refresh`-токена в cookie.
 
-    Given: запрос без cookie с refresh-токеном,
-    When: клиент пытается завершить сессию,
-    Then: приходит 401: сессию не идентифицировать.
+    Given: запрос без cookie с `refresh`-токеном, When: клиент пытается завершить сессию, Then:
+    приходит `401`: сессию не идентифицировать.
+
+    Args:
+        logout_client (ASGIClient): ASGI-клиент выхода с тестовыми зависимостями.
     """
     # Когда
     response = await logout_client.post(LOGOUT_PATH)
@@ -172,9 +184,11 @@ async def test_logout_rejects_invalid_token(
 ) -> None:
     """Выход с невалидным токеном.
 
-    Given: в заголовке передана строка, не являющаяся JWT,
-    When: клиент пытается завершить сессию,
-    Then: приходит 403: токен не проходит проверку.
+    Given: в заголовке передана строка, не являющаяся JWT, When: клиент пытается завершить сессию,
+    Then: приходит `403`: токен не проходит проверку.
+
+    Args:
+        logout_client (ASGIClient): ASGI-клиент выхода с тестовыми зависимостями.
     """
     # Когда
     response = await logout_client.post(LOGOUT_PATH, headers=_cookie("not-a-jwt"))
@@ -189,11 +203,16 @@ async def test_logout_rejects_expired_token(
     rotate_jwk: RotateJwk,
     private_jwk_repository: FilePrivateJwkRepository,
 ) -> None:
-    """Выход с просроченным refresh-токеном.
+    """Выход с просроченным `refresh`-токеном.
 
-    Given: срок действия refresh-токена уже истёк,
-    When: клиент пытается завершить сессию,
-    Then: приходит 403: просроченный токен не принимается.
+    Given: срок действия `refresh`-токена уже истёк, When: клиент пытается завершить сессию, Then:
+    приходит `403`: просроченный токен не принимается.
+
+    Args:
+        logout_client (ASGIClient): ASGI-клиент выхода с тестовыми зависимостями.
+        rotate_jwk (RotateJwk): Сценарий ротации ключей с тестовыми хранилищами.
+        private_jwk_repository (FilePrivateJwkRepository): Репозиторий приватного ключа во
+            временном каталоге.
     """
     # Дано
     await rotate_jwk(TTL_SECONDS)
