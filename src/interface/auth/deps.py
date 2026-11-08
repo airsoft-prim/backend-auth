@@ -1,7 +1,6 @@
 from typing import Annotated
 
 from fastapi import Cookie, Depends
-from fastapi.security import HTTPAuthorizationCredentials
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,14 +16,13 @@ from src.adapters.database import get_session
 from src.adapters.database.repositories import SqlAlchemyUserRepository
 from src.adapters.filesystem import FileSystem
 from src.adapters.filesystem.repositories import FilePrivateJwkRepository
-from src.application.auth import GetUser, LoginUser, RegisterUser
-from src.application.session import CreateSession, SlideSession
+from src.application.auth import GetUser, OpenUserSession, RefreshUserSession, RegisterUser
+from src.application.session import CreateSession, RequireActiveSession
 from src.application.token import (
     Authorize,
     EnsureTokenActive,
     IssueTokenPair,
     RevokeSession,
-    RevokeToken,
     RotateRefreshToken,
     SignToken,
     VerifyToken,
@@ -34,12 +32,10 @@ from src.domain.entities import User
 from src.domain.enums import TokenType
 from src.domain.errors import JWTDecryptionError, UserAuthorizationError
 from src.domain.tokens import (
-    AccessTokenClaims,
     AccessTokenConfig,
     RefreshTokenClaims,
     RefreshTokenConfig,
 )
-from src.interface._protection import schema
 
 
 async def get_register_user(
@@ -54,20 +50,6 @@ async def get_register_user(
         RegisterUser: Use case регистрации, привязанный к сессии запроса.
     """
     return RegisterUser(SqlAlchemyUserRepository(session), hasher=PASSWORD_HASHER)
-
-
-async def get_login_user(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> LoginUser:
-    """Предоставляет use case входа на время запроса.
-
-    Args:
-        session (AsyncSession): Асинхронная сессия БД.
-
-    Returns:
-        LoginUser: Use case входа, привязанный к сессии запроса.
-    """
-    return LoginUser(SqlAlchemyUserRepository(session), hasher=PASSWORD_HASHER)
 
 
 async def get_user(
@@ -148,20 +130,6 @@ async def get_issue_token_pair(
     return IssueTokenPair(access, refresh)
 
 
-async def get_verify_access_token(
-    client: Annotated[Redis, Depends(get_bounded_client(StorageNumber.KEYS.value))],
-) -> VerifyToken[AccessTokenClaims]:
-    """Предоставляет use case проверки `access`-токена на время запроса.
-
-    Args:
-        client (Redis): Клиент `Redis` с опубликованными публичными JWK.
-
-    Returns:
-        VerifyToken[AccessTokenClaims]: Use case проверки JWT-токена.
-    """
-    return VerifyToken(_access_token_config(), RedisPublicJwkRepository(client))
-
-
 async def get_verify_refresh_token(
     client: Annotated[Redis, Depends(get_bounded_client(StorageNumber.KEYS.value))],
 ) -> VerifyToken[RefreshTokenClaims]:
@@ -212,20 +180,6 @@ async def get_revoke_session(
     )
 
 
-async def get_revoke_token(
-    client: Annotated[Redis, Depends(get_bounded_client(StorageNumber.TOKENS.value))],
-) -> RevokeToken:
-    """Предоставляет use case отзыва отдельного токена на время запроса.
-
-    Args:
-        client (Redis): Клиент `Redis` с отозванными токенами.
-
-    Returns:
-        RevokeToken: Use case отзыва токена по `jti`.
-    """
-    return RevokeToken(RedisRevokedTokensRepository(client))
-
-
 async def get_create_session(
     client: Annotated[Redis, Depends(get_bounded_client(StorageNumber.SESSIONS.value))],
 ) -> CreateSession:
@@ -244,60 +198,28 @@ async def get_create_session(
     )
 
 
-async def get_slide_session(
-    client: Annotated[Redis, Depends(get_bounded_client(StorageNumber.SESSIONS.value))],
-) -> SlideSession:
-    """Предоставляет use case продления сессии на время запроса.
-
-    Args:
-        client (Redis): Клиент `Redis` с сессиями пользователей.
-
-    Returns:
-        SlideSession: Use case продления сессии (sliding expiration).
-    """
-    return SlideSession(RedisSessionRepository(client), config.security.REFRESH_TOKEN_TTL)
-
-
 async def get_rotate_refresh_token(
-    slide: Annotated[SlideSession, Depends(get_slide_session)],
-    revoke: Annotated[RevokeToken, Depends(get_revoke_token)],
     revoke_session: Annotated[RevokeSession, Depends(get_revoke_session)],
     tokens_client: Annotated[Redis, Depends(get_bounded_client(StorageNumber.TOKENS.value))],
+    sessions_client: Annotated[Redis, Depends(get_bounded_client(StorageNumber.SESSIONS.value))],
 ) -> RotateRefreshToken:
     """Предоставляет use case ротации `refresh`-токена на время запроса.
 
     Args:
-        slide (SlideSession): Use case продления сессии.
-        revoke (RevokeToken): Use case отзыва старого `refresh`-токена.
         revoke_session (RevokeSession): Use case отзыва сессии при краже.
         tokens_client (Redis): Клиент `Redis` с отозванными токенами и сессиями.
+        sessions_client (Redis): Клиент `Redis` с сессиями пользователей.
 
     Returns:
         RotateRefreshToken: Use case ротации `refresh`-токена.
     """
     return RotateRefreshToken(
-        slide,
-        revoke,
+        RedisSessionRepository(sessions_client),
         revoke_session,
         RedisRevokedTokensRepository(tokens_client),
         RedisRevokedSessionsRepository(tokens_client),
+        config.security.REFRESH_TOKEN_TTL,
     )
-
-
-async def get_authorize_access(
-    verify: Annotated[VerifyToken[AccessTokenClaims], Depends(get_verify_access_token)],
-    ensure_active: Annotated[EnsureTokenActive, Depends(get_ensure_token_active)],
-) -> Authorize[AccessTokenClaims]:
-    """Предоставляет use case авторизации по `access`-токену на время запроса.
-
-    Args:
-        verify (VerifyToken[AccessTokenClaims]): Use case проверки `access`-токена.
-        ensure_active (EnsureTokenActive): Use case проверки отзыва токена.
-
-    Returns:
-        Authorize[AccessTokenClaims]: Use case проверки Bearer-токена и его отзыва.
-    """
-    return Authorize(verify, ensure_active, TokenType.ACCESS)
 
 
 async def get_authorize_refresh(
@@ -316,43 +238,43 @@ async def get_authorize_refresh(
     return Authorize(verify, ensure_active, TokenType.REFRESH)
 
 
-async def get_access_token(
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(schema)],
-    authorize: Annotated[Authorize[AccessTokenClaims], Depends(get_authorize_access)],
-) -> AccessTokenClaims:
-    """Проверяет Bearer-токен и возвращает его `claims`.
+async def get_require_active_session(
+    client: Annotated[Redis, Depends(get_bounded_client(StorageNumber.SESSIONS.value))],
+) -> RequireActiveSession:
+    """Предоставляет проверку действующей сессии.
 
     Args:
-        credentials (HTTPAuthorizationCredentials | None): Учётные данные заголовка
-            `Authorization`.
-        authorize (Authorize[AccessTokenClaims]): Use case авторизации запроса.
+        client (Redis): Клиент хранилища сессий.
 
     Returns:
-        AccessTokenClaims: Проверенные `claims` токена.
+        RequireActiveSession: Проверка принадлежности токена активной сессии.
     """
-    token = credentials.credentials if credentials else None
-
-    return await authorize(token)
+    return RequireActiveSession(RedisSessionRepository(client))
 
 
 async def get_refresh_token(
     authorize: Annotated[Authorize[RefreshTokenClaims], Depends(get_authorize_refresh)],
+    active_session: Annotated[RequireActiveSession, Depends(get_require_active_session)],
     refresh_token: Annotated[str | None, Cookie()] = None,
 ) -> RefreshTokenClaims:
     """Проверяет `refresh`-токен из cookie и возвращает его `claims`.
 
     Args:
         authorize (Authorize[RefreshTokenClaims]): Use case авторизации по `refresh`-токену.
+        active_session (RequireActiveSession): Проверка состояния и владельца сессии.
         refresh_token (str | None): Refresh-токен из HTTP-only cookie.
 
     Returns:
         RefreshTokenClaims: Проверенные `claims` `refresh`-токена.
     """
-    return await authorize(refresh_token)
+    claims = await authorize(refresh_token)
+    await active_session(claims)
+    return claims
 
 
 async def get_refresh_claims(
     verify: Annotated[VerifyToken[RefreshTokenClaims], Depends(get_verify_refresh_token)],
+    active_session: Annotated[RequireActiveSession, Depends(get_require_active_session)],
     refresh_token: Annotated[str | None, Cookie()] = None,
 ) -> RefreshTokenClaims:
     """Проверяет `refresh`-токен из cookie без проверки отзыва.
@@ -362,6 +284,7 @@ async def get_refresh_claims(
 
     Args:
         verify (VerifyToken[RefreshTokenClaims]): Use case проверки `refresh`-токена.
+        active_session (RequireActiveSession): Проверка состояния и владельца сессии.
         refresh_token (str | None): Refresh-токен из HTTP-only cookie.
 
     Returns:
@@ -374,17 +297,19 @@ async def get_refresh_claims(
         msg = "Bearer token is missing."
         raise UserAuthorizationError(msg)
 
-    return await verify(refresh_token)
+    claims = await verify(refresh_token)
+    await active_session(claims)
+    return claims
 
 
 async def get_current_user(
-    claims: Annotated[AccessTokenClaims, Depends(get_access_token)],
+    claims: Annotated[RefreshTokenClaims, Depends(get_refresh_token)],
     fetch_user: Annotated[GetUser, Depends(get_user)],
 ) -> User:
     """Возвращает учётную запись владельца проверенного токена.
 
     Args:
-        claims (AccessTokenClaims): Проверенные `claims` токена.
+        claims (RefreshTokenClaims): Проверенные `claims` токена.
         fetch_user (GetUser): Use case получения учётной записи по идентификатору.
 
     Returns:
@@ -401,3 +326,39 @@ async def get_current_user(
         raise JWTDecryptionError(msg) from error
 
     return await fetch_user(user_id)
+
+
+async def get_open_user_session(
+    db: Annotated[AsyncSession, Depends(get_session)],
+    sessions: Annotated[CreateSession, Depends(get_create_session)],
+    sign: Annotated[SignToken, Depends(get_sign_refresh_token)],
+) -> OpenUserSession:
+    """Собирает сценарий открытия сессии.
+
+    Args:
+        db (AsyncSession): Сессия базы данных для доступа к учётным записям.
+        sessions (CreateSession): Сценарий создания сессии.
+        sign (SignToken): Подписывает refresh-токен.
+
+    Returns:
+        OpenUserSession: Сценарий входа и открытия сессии.
+    """
+    return OpenUserSession(SqlAlchemyUserRepository(db), PASSWORD_HASHER, sessions, sign)
+
+
+async def get_refresh_user_session(
+    rotate: Annotated[RotateRefreshToken, Depends(get_rotate_refresh_token)],
+    users: Annotated[GetUser, Depends(get_user)],
+    issue: Annotated[IssueTokenPair, Depends(get_issue_token_pair)],
+) -> RefreshUserSession:
+    """Собирает сценарий обновления сессии.
+
+    Args:
+        rotate (RotateRefreshToken): Сценарий ротации refresh-токена.
+        users (GetUser): Сценарий получения учётной записи.
+        issue (IssueTokenPair): Сценарий выпуска пары токенов.
+
+    Returns:
+        RefreshUserSession: Сценарий обновления сессии и выпуска токенов.
+    """
+    return RefreshUserSession(rotate, users, issue)

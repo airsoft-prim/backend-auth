@@ -5,15 +5,17 @@ import jwt
 import pytest
 
 from src.adapters.cache.repositories import RedisSessionRepository
+from src.adapters.crypto.hasher import PASSWORD_HASHER
 from src.application import CreateSession, SignToken
+from src.application.auth import OpenUserSession
 from src.application.jwk import RotateJwk
 from src.config import config
+from src.domain.entities import User
 from src.interface.auth.deps import (
-    get_create_session,
-    get_login_user,
-    get_sign_refresh_token,
+    get_open_user_session,
 )
 from tests.asgi_client import ASGIClient
+from tests.doubles import InMemoryUserRepository, as_user_repository
 
 LOGIN_PATH = "/auth/login"
 USER_ID = 42
@@ -21,25 +23,6 @@ USERNAME = "stalker_2010"
 PASSWORD = "Str0ng!Pass"  # noqa: S105
 ROLE = "moderator"
 TTL_SECONDS = 3600
-
-
-class StubLoginService:
-    """Подмена сценария входа без проверки учётных данных.
-
-    Возвращает постоянные `USER_ID` и `ROLE` для проверки HTTP-контракта входа без обращения к БД.
-    """
-
-    async def __call__(self, _username: str, _password: str) -> tuple[int, str]:
-        """Возвращает идентификатор и роль, не проверяя учётные данные.
-
-        Args:
-            _username (str): Логин (не используется).
-            _password (str): Пароль (не используется).
-
-        Returns:
-            tuple[int, str]: Идентификатор пользователя и его системная роль.
-        """
-        return USER_ID, ROLE
 
 
 @pytest.fixture
@@ -58,12 +41,21 @@ def login_client(
     Returns:
         ASGIClient: Клиент маршрута входа.
     """
-    api_app.dependency_overrides[get_login_user] = StubLoginService
-    api_app.dependency_overrides[get_sign_refresh_token] = lambda: sign_refresh_token
-    api_app.dependency_overrides[get_create_session] = lambda: CreateSession(
-        session_repository,
-        config.security.REFRESH_TOKEN_TTL,
-        config.security.MAX_ACTIVE_SESSIONS,
+    users = InMemoryUserRepository()
+    user = User(
+        username=USERNAME, email="user@example.org", pswd_hash=PASSWORD_HASHER.hash(PASSWORD)
+    )
+    user.id = USER_ID
+    users.users.append(user)
+    api_app.dependency_overrides[get_open_user_session] = lambda: OpenUserSession(
+        as_user_repository(users),
+        PASSWORD_HASHER,
+        CreateSession(
+            session_repository,
+            config.security.REFRESH_TOKEN_TTL,
+            config.security.MAX_ACTIVE_SESSIONS,
+        ),
+        sign_refresh_token,
     )
 
     return ASGIClient(api_app)

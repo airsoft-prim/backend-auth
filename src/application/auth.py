@@ -1,3 +1,5 @@
+from src.application.session import CreateSession
+from src.application.token import IssueTokenPair, RotateRefreshToken, SignToken, TokenPair
 from src.domain.entities import User
 from src.domain.errors import (
     UserAlreadyExistsError,
@@ -5,6 +7,7 @@ from src.domain.errors import (
     UserIdentificationError,
 )
 from src.domain.ports import PasswordHasher, UserRepository
+from src.domain.tokens import RefreshTokenClaims
 
 from ._base import AbstractUseCase
 
@@ -53,53 +56,6 @@ class RegisterUser(AbstractUseCase):
         await self._users.save(user)
 
 
-class LoginUser(AbstractUseCase):
-    """Use case входа пользователя в систему.
-
-    Находит учётную запись по логину, отклоняет отсутствующую или заблокированную запись и
-    проверяет пароль. Возвращает идентификатор и роль; сессию и токены не создаёт.
-    """
-
-    def __init__(self, users: UserRepository, hasher: PasswordHasher) -> None:
-        """Инициализация класса.
-
-        Args:
-            users (UserRepository): Порт доступа к учётным записям.
-            hasher (PasswordHasher): Порт хеширования паролей (argon2, `pwdlib[argon2]`).
-        """
-        self._users = users
-        self._hasher = hasher
-
-    async def __call__(self, username: str, password: str) -> tuple[int, str]:
-        """Выполняет вход пользователя в систему.
-
-        Args:
-            username (str): Имя пользователя.
-            password (str): Пароль пользователя.
-
-        Returns:
-            tuple[int, str]: Идентификатор пользователя и его системная роль.
-
-        Raises:
-            UserIdentificationError: Учётная запись отсутствует, заблокирована или не имеет ID.
-            UserAuthenticationError: Неверный пароль.
-        """
-        user = await self._users.get_by_username(username)
-        if user is None or user.disabled:
-            msg = "User not found."
-            raise UserIdentificationError(msg) from None
-
-        if not self._hasher.verify(password, user.pswd_hash):
-            msg = "Password is incorrect."
-            raise UserAuthenticationError(msg) from None
-
-        if user.id is None:
-            msg = "Stored account has no identifier."
-            raise UserIdentificationError(msg) from None
-
-        return user.id, user.system_role
-
-
 class GetUser(AbstractUseCase):
     """Use case получения учётной записи по её идентификатору.
 
@@ -134,3 +90,98 @@ class GetUser(AbstractUseCase):
             raise UserIdentificationError(msg) from None
 
         return user
+
+
+class OpenUserSession:
+    """Открывает сессию пользователя после проверки учётных данных.
+
+    Создаёт запись сессии с контекстом устройства и выпускает связанный с ней refresh-токен.
+    """
+
+    def __init__(
+        self, users: UserRepository, hasher: PasswordHasher, session: CreateSession, sign: SignToken
+    ) -> None:
+        """Инициализация класса.
+
+        Args:
+            users (UserRepository): Порт доступа к учётным записям.
+            hasher (PasswordHasher): Порт проверки пароля.
+            session (CreateSession): Сценарий создания сессии.
+            sign (SignToken): Сценарий подписи refresh-токена.
+        """
+        self._users = users
+        self._hasher = hasher
+        self._session = session
+        self._sign = sign
+
+    async def __call__(
+        self, username: str, password: str, *, ip: str | None = None, user_agent: str | None = None
+    ) -> str:
+        """Проверяет учётные данные и возвращает refresh-токен новой сессии.
+
+        Args:
+            username (str): Имя пользователя.
+            password (str): Пароль в открытом виде.
+            ip (str | None): IP-адрес входа или `None`, если он неизвестен.
+            user_agent (str | None): Заголовок `User-Agent` или `None`, если он отсутствует.
+
+        Returns:
+            str: Подписанный refresh-токен созданной сессии.
+
+        Raises:
+            UserIdentificationError: Учётная запись отсутствует, заблокирована или не имеет ID.
+            UserAuthenticationError: Пароль не соответствует сохранённому хешу.
+        """
+        user = await self._users.get_by_username(username)
+
+        if user is None or user.disabled:
+            msg = "User not found."
+            raise UserIdentificationError(msg) from None
+
+        if user.id is None:  # Проверка, диктуемая доменным ограничением
+            msg = "Stored account has no identifier."
+            raise UserIdentificationError(msg) from None
+
+        if not self._hasher.verify(password, user.pswd_hash):
+            msg = "Password is incorrect."
+            raise UserAuthenticationError(msg) from None
+
+        session = await self._session(user.id, ip=ip, user_agent=user_agent)
+        token, _ = await self._sign(user.id, session.id)
+
+        return token
+
+
+class RefreshUserSession:
+    """Обновляет токены активной сессии.
+
+    Загружает текущую роль владельца, ротирует предъявленный refresh-токен и выпускает новую
+    пару токенов для той же сессии.
+    """
+
+    def __init__(self, rotate: RotateRefreshToken, users: GetUser, issue: IssueTokenPair) -> None:
+        """Инициализация класса.
+
+        Args:
+            rotate (RotateRefreshToken): Сценарий ротации refresh-токена и продления сессии.
+            users (GetUser): Сценарий получения учётной записи владельца.
+            issue (IssueTokenPair): Сценарий выпуска пары токенов.
+        """
+        self._rotate = rotate
+        self._users = users
+        self._issue = issue
+
+    async def __call__(self, claims: RefreshTokenClaims) -> TokenPair:
+        """Возвращает новую пару токенов после ротации refresh-токена.
+
+        Args:
+            claims (RefreshTokenClaims): Проверенные claims предъявленного refresh-токена.
+
+        Returns:
+            TokenPair: Access- и refresh-токены сессии и срок жизни access-токена в секундах.
+        """
+        user = await self._users(int(claims["sub"]))
+
+        await self._rotate(claims)
+
+        return await self._issue(claims["sub"], claims["sid"], user.system_role)

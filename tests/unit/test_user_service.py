@@ -1,9 +1,15 @@
 """Тесты сервиса учётных записей."""
 
+from typing import cast
+from unittest.mock import AsyncMock
+
 from pwdlib import PasswordHash
 import pytest
 
-from src.application.auth import GetUser, LoginUser, RegisterUser
+from src.adapters.cache.repositories import RedisSessionRepository
+from src.application.auth import GetUser, OpenUserSession, RegisterUser
+from src.application.session import CreateSession
+from src.application.token import SignToken
 from src.domain.entities import User
 from src.domain.enums import UserRole
 from src.domain.errors import (
@@ -47,17 +53,19 @@ def register_user(
 
 
 @pytest.fixture
-def login_user(repository: InMemoryUserRepository, password_hash: PasswordHash) -> LoginUser:
-    """Отдаёт use case входа поверх подмены репозитория.
-
-    Args:
-        repository (InMemoryUserRepository): Подмена репозитория.
-        password_hash (PasswordHash): Хешер паролей приложения.
-
-    Returns:
-        LoginUser: Use case входа пользователя.
-    """
-    return LoginUser(users=as_user_repository(repository), hasher=password_hash)
+def login_user(
+    repository: InMemoryUserRepository,
+    password_hash: PasswordHash,
+    session_repository: RedisSessionRepository,
+) -> OpenUserSession:
+    """Сценарий входа с проверкой реального создания сессии."""
+    signer = AsyncMock(return_value=("refresh", 3600))
+    return OpenUserSession(
+        as_user_repository(repository),
+        password_hash,
+        CreateSession(session_repository, 3600, 5),
+        cast("SignToken", signer),
+    )
 
 
 @pytest.fixture
@@ -243,18 +251,19 @@ async def test_get_account_rejects_unknown_user(get_user: GetUser) -> None:
         await get_user(USER_ID)
 
 
-async def test_login_returns_user_id_and_role(
-    login_user: LoginUser,
+async def test_login_creates_session(
+    login_user: OpenUserSession,
     repository: InMemoryUserRepository,
     password_hash: PasswordHash,
+    session_repository: RedisSessionRepository,
 ) -> None:
     """Успешный вход.
 
     Given: учётная запись с паролем и ролью `moderator`, When: пользователь входит с верными
-    данными, Then: сервис возвращает Id пользователя и его системную роль.
+    данными, Then: открывается сессия и возвращается refresh-токен.
 
     Args:
-        login_user (LoginUser): Сценарий входа через тестовый репозиторий учётных записей.
+        login_user (OpenUserSession): Сценарий входа через тестовый репозиторий учётных записей.
         repository (InMemoryUserRepository): Репозиторий публичных JWK для подмены зависимости.
         password_hash (PasswordHash): Хешер паролей Argon2, используемый приложением.
     """
@@ -267,21 +276,22 @@ async def test_login_returns_user_id_and_role(
     )
 
     # Когда
-    subject, role = await login_user(USERNAME, PASSWORD)
+    token = await login_user(USERNAME, PASSWORD)
 
     # Тогда
-    assert subject == USER_ID
-    assert role == UserRole.MODERATOR
+    assert token == "refresh"  # noqa: S105
+    sessions = await session_repository.list_active(USER_ID)
+    assert len(sessions) == 1
 
 
-async def test_login_rejects_unknown_user(login_user: LoginUser) -> None:
+async def test_login_rejects_unknown_user(login_user: OpenUserSession) -> None:
     """Вход с несуществующим логином.
 
     Given: учётной записи с таким логином нет, When: пользователь пытается войти, Then: сервис
     сообщает об ошибке идентификации.
 
     Args:
-        login_user (LoginUser): Сценарий входа через тестовый репозиторий учётных записей.
+        login_user (OpenUserSession): Сценарий входа через тестовый репозиторий учётных записей.
     """
     # Когда / Тогда
     with pytest.raises(UserIdentificationError, match="User not found"):
@@ -289,7 +299,7 @@ async def test_login_rejects_unknown_user(login_user: LoginUser) -> None:
 
 
 async def test_login_rejects_wrong_password(
-    login_user: LoginUser,
+    login_user: OpenUserSession,
     repository: InMemoryUserRepository,
     password_hash: PasswordHash,
 ) -> None:
@@ -299,7 +309,7 @@ async def test_login_rejects_wrong_password(
     Then: сервис сообщает об ошибке аутентификации.
 
     Args:
-        login_user (LoginUser): Сценарий входа через тестовый репозиторий учётных записей.
+        login_user (OpenUserSession): Сценарий входа через тестовый репозиторий учётных записей.
         repository (InMemoryUserRepository): Репозиторий публичных JWK для подмены зависимости.
         password_hash (PasswordHash): Хешер паролей Argon2, используемый приложением.
     """
@@ -312,7 +322,7 @@ async def test_login_rejects_wrong_password(
 
 
 async def test_login_rejects_disabled_user(
-    login_user: LoginUser,
+    login_user: OpenUserSession,
     repository: InMemoryUserRepository,
     password_hash: PasswordHash,
 ) -> None:
@@ -322,7 +332,7 @@ async def test_login_rejects_disabled_user(
     сервис не раскрывает блокировку и отвечает как на несуществующий логин.
 
     Args:
-        login_user (LoginUser): Сценарий входа через тестовый репозиторий учётных записей.
+        login_user (OpenUserSession): Сценарий входа через тестовый репозиторий учётных записей.
         repository (InMemoryUserRepository): Репозиторий публичных JWK для подмены зависимости.
         password_hash (PasswordHash): Хешер паролей Argon2, используемый приложением.
     """

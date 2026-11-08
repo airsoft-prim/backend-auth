@@ -8,10 +8,12 @@
 
 from collections.abc import AsyncIterator, Sequence
 from fnmatch import fnmatch
+import json
 from typing import Any, Self, cast
 
 from redis.asyncio import Redis
 
+from src.adapters.cache.repositories.session import _REMOVE_MISSING, _SAVE_SESSION, _SLIDE_SESSION
 from src.domain.entities import User
 from src.domain.ports import UserRepository
 
@@ -98,7 +100,9 @@ class InMemoryRedis:
         self.sets: dict[str, set[str]] = {}
         self._unavailable = unavailable
 
-    async def set(self, key: str, value: str, *, ex: int | None = None) -> None:
+    async def set(
+        self, key: str, value: str, *, ex: int | None = None, nx: bool = False
+    ) -> bool | None:
         """Сохраняет значение по ключу.
 
         Args:
@@ -108,10 +112,15 @@ class InMemoryRedis:
         """
         self._ensure_available()
 
+        if nx and key in self.values:
+            return None
+
         self.values[key] = value
 
         if ex is not None:
             self.ttl[key] = ex
+
+        return True
 
     async def get(self, key: str) -> str | None:
         """Возвращает значение ключа.
@@ -125,6 +134,40 @@ class InMemoryRedis:
         self._ensure_available()
 
         return self.values.get(key)
+
+    async def eval(self, script: str, numkeys: int, *args: Any) -> int | None:
+        """Исполняет операции сессий атомарно в подмене Redis."""
+        self._ensure_available()
+        if script == _SLIDE_SESSION and numkeys == 1:
+            key, expires_at, ttl, sid = args
+            payload = self.values.get(key)
+            if payload is None:
+                return 0
+            session = json.loads(payload)
+            if session["revoked_at"] is not None:
+                return 0
+            session["expires_at"] = expires_at
+            index = f"session:user:{session['user_id']}"
+            self.values[key] = json.dumps(session)
+            self.ttl[key] = ttl
+            self.sets.setdefault(index, set()).add(sid)
+            self.ttl[index] = max(self.ttl.get(index, 0), ttl)
+            return 1
+        key, index, *values = args
+        if script == _SAVE_SESSION:
+            payload, ttl, sid = values
+            self.values[key] = payload
+            self.ttl[key] = ttl
+            self.sets.setdefault(index, set()).add(sid)
+            self.ttl[index] = max(self.ttl.get(index, 0), ttl)
+            return None
+        if script == _REMOVE_MISSING:
+            if key not in self.values and values[0] in self.sets.get(index, set()):
+                self.sets[index].remove(values[0])
+                return 1
+            return 0
+        msg = "Unexpected Redis script."
+        raise ValueError(msg)
 
     async def exists(self, key: str) -> int:
         """Сообщает, есть ли значение по ключу.

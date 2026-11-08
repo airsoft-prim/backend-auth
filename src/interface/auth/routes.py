@@ -2,31 +2,20 @@ from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, Request, Response
 
-from src.application.auth import GetUser, LoginUser, RegisterUser
-from src.application.session import CreateSession
-from src.application.token import (
-    REFRESH_TOKEN_COOKIE,
-    IssueTokenPair,
-    RevokeSession,
-    RotateRefreshToken,
-    SignToken,
-)
+from src.application.auth import OpenUserSession, RefreshUserSession, RegisterUser
+from src.application.token import REFRESH_TOKEN_COOKIE, RevokeSession
 from src.config import config
 from src.domain.entities import User
 from src.domain.tokens import RefreshTokenClaims
 
 from .deps import (
-    get_create_session,
     get_current_user,
-    get_issue_token_pair,
-    get_login_user,
+    get_open_user_session,
     get_refresh_claims,
     get_refresh_token,
+    get_refresh_user_session,
     get_register_user,
     get_revoke_session,
-    get_rotate_refresh_token,
-    get_sign_refresh_token,
-    get_user,
 )
 from .docs import LOGIN_DOCS, LOGOUT_DOCS, ME_DOCS, REFRESH_DOCS, REGISTER_DOCS
 from .schemas import AccessToken, LoginRequestBody, RegisterRequestBody, UserData
@@ -53,13 +42,11 @@ async def register_user(
 
 
 @router.post("/login", response_class=Response, **LOGIN_DOCS)
-async def login_user(  # noqa: PLR0913, PLR0917
+async def login_user(
     response: Response,
     request: Request,
     body: Annotated[LoginRequestBody, Body(...)],
-    login: Annotated[LoginUser, Depends(get_login_user)],
-    create_session: Annotated[CreateSession, Depends(get_create_session)],
-    sign_refresh_token: Annotated[SignToken, Depends(get_sign_refresh_token)],
+    open_session: Annotated[OpenUserSession, Depends(get_open_user_session)],
 ) -> None:
     """Открывает сессию и записывает `refresh`-токен в cookie.
 
@@ -67,16 +54,15 @@ async def login_user(  # noqa: PLR0913, PLR0917
         response (Response): Ответ, в который кладётся `refresh`-токен (cookie).
         request (Request): Запрос, из которого читается контекст входа (IP и `User-Agent`).
         body (LoginRequestBody): Учётные данные пользователя.
-        login (LoginUser): Use case входа.
-        create_session (CreateSession): Use case создания сессии.
-        sign_refresh_token (SignToken): Use case подписи `refresh`-токена.
+        open_session (OpenUserSession): Сценарий открытия сессии.
     """
-    subject, _ = await login(body.username, body.password.get_secret_value())
-
     ip = request.client.host if request.client is not None else None
-    session = await create_session(subject, ip=ip, user_agent=request.headers.get("user-agent"))
-
-    refresh_token, _ = await sign_refresh_token(subject, session.id)
+    refresh_token = await open_session(
+        body.username,
+        body.password.get_secret_value(),
+        ip=ip,
+        user_agent=request.headers.get("user-agent"),
+    )
 
     response.set_cookie(
         key=REFRESH_TOKEN_COOKIE,
@@ -105,9 +91,7 @@ async def get_me(current_user: Annotated[User, Depends(get_current_user)]) -> Us
 async def refresh_access_token(
     response: Response,
     claims: Annotated[RefreshTokenClaims, Depends(get_refresh_claims)],
-    rotate: Annotated[RotateRefreshToken, Depends(get_rotate_refresh_token)],
-    fetch_user: Annotated[GetUser, Depends(get_user)],
-    issue_tokens: Annotated[IssueTokenPair, Depends(get_issue_token_pair)],
+    refresh: Annotated[RefreshUserSession, Depends(get_refresh_user_session)],
 ) -> AccessToken:
     """Обновляет токены текущей сессии.
 
@@ -117,19 +101,12 @@ async def refresh_access_token(
     Args:
         response (Response): Ответ, в который кладётся новый `refresh`-токен (cookie).
         claims (RefreshTokenClaims): Проверенные `claims` `refresh`-токена.
-        rotate (RotateRefreshToken): Use case ротации `refresh`-токена.
-        fetch_user (GetUser): Use case получения учётной записи для роли.
-        issue_tokens (IssueTokenPair): Use case выпуска пары токенов.
+        refresh (RefreshUserSession): Сценарий обновления сессии.
 
     Returns:
         AccessToken: Новый `access`-токен с параметрами.
     """
-    await rotate(claims)
-
-    # Access-токены живут считанные минуты и не отзываются по отдельности: их
-    # кража ограничена коротким сроком жизни, а сессией управляет refresh-токен.
-    user = await fetch_user(int(claims["sub"]))
-    pair = await issue_tokens(claims["sub"], claims["sid"], user.system_role)
+    pair = await refresh(claims)
 
     response.set_cookie(
         key=REFRESH_TOKEN_COOKIE,

@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Protocol
 
 from src.domain.entities import Session, User
@@ -166,6 +167,19 @@ class RevokedTokensRepository(Protocol):
     маркера.
     """
 
+    async def consume(self, token_type: TokenType, token_id: str, ttl: int) -> bool:
+        """Атомарно отмечает токен использованным.
+
+        Args:
+            token_type (TokenType): Тип токена.
+            token_id (str): Идентификатор токена из `jti`.
+            ttl (int): Время жизни маркера в секундах.
+
+        Returns:
+            bool: `True`, если маркер создан; `False`, если он уже существует.
+        """
+        ...
+
     async def store(self, token_type: TokenType, token_id: str, ttl: int) -> None:
         """Сохраняет маркер отзыва токена с TTL.
 
@@ -223,6 +237,18 @@ class SessionRepository(Protocol):
     Определяет сохранение, получение по `sid` и выборку активных доменных сессий пользователя без
     привязки к `Redis`.
     """
+
+    async def slide(self, sid: str, expires_at: datetime) -> bool:
+        """Атомарно продлевает существующую неотозванную сессию.
+
+        Args:
+            sid (str): Идентификатор сессии.
+            expires_at (datetime): Новое время окончания сессии с часовым поясом.
+
+        Returns:
+            bool: `True`, если сессия продлена; иначе `False`.
+        """
+        ...
 
     async def save(self, session: Session) -> None:
         """Сохраняет запись сессии.

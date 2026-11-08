@@ -8,8 +8,7 @@ from src.adapters.cache.repositories import (
     RedisRevokedSessionsRepository,
     RedisSessionRepository,
 )
-from src.application import CloseOtherSessions, CloseSession, CreateSession, ListSessions
-from src.application.session import parse_user_agent
+from src.application import CloseSession, CreateSession, ListSessions
 from src.domain.entities import Session
 from src.domain.errors import SessionNotFoundError
 from tests.doubles import InMemoryRedis
@@ -69,7 +68,7 @@ async def test_parse_user_agent_detects_platform_and_browser(
         browser (str): Ожидаемый браузер или `None`, если маркер отсутствует.
     """
     # Когда
-    parsed = parse_user_agent(user_agent)
+    parsed = CreateSession.parse_user_agent(user_agent)
 
     # Тогда
     assert parsed == (platform, browser)
@@ -82,7 +81,7 @@ async def test_parse_user_agent_returns_none_for_unknown() -> None:
     Then: он возвращает пару из `None`.
     """
     # Когда
-    parsed = parse_user_agent("curl/8.0.1")
+    parsed = CreateSession.parse_user_agent("curl/8.0.1")
 
     # Тогда
     assert parsed == (None, None)
@@ -321,10 +320,9 @@ async def test_close_other_sessions_keeps_current(
     await session_repository.save(other)
 
     close_session = CloseSession(revoked_sessions_repository, session_repository)
-    close_others = CloseOtherSessions(session_repository, close_session)
 
     # Когда
-    await close_others(USER_ID, current.id)
+    await close_session.others(USER_ID, current.id)
 
     # Тогда
     stored_current = await session_repository.get(current.id)

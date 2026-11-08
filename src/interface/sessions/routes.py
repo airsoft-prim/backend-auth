@@ -1,12 +1,12 @@
+from dataclasses import asdict
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Response
 
-from src.application.session import CloseOtherSessions, CloseSession, ListSessions
+from src.application.session import CloseSession, ListSessions
 
 from .deps import (
     CurrentSession,
-    get_close_other_sessions,
     get_close_session,
     get_current_session,
     get_list_sessions,
@@ -33,17 +33,8 @@ async def get_all_sessions(
     """
     sessions = await list_sessions(current.user_id)
 
-    # TODO: Упросить валидацию до from_attributes
     return [
-        SessionData(
-            id=session.id,
-            current=session.id == current.sid,
-            created_at=session.created_at,
-            expires_at=session.expires_at,
-            ip=session.ip,
-            platform=session.platform,
-            browser=session.browser,
-        )
+        SessionData.model_validate({**asdict(session), "current": session.id == current.sid})
         for session in sessions
     ]
 
@@ -67,12 +58,12 @@ async def close_session(
 @router.delete("", response_class=Response, **CLOSE_OTHER_SESSIONS_DOCS)
 async def close_other_sessions(
     current: Annotated[CurrentSession, Depends(get_current_session)],
-    close_others: Annotated[CloseOtherSessions, Depends(get_close_other_sessions)],
+    close: Annotated[CloseSession, Depends(get_close_session)],
 ) -> None:
     """Закрывает сессии пользователя, кроме текущей.
 
     Args:
         current (CurrentSession): Владелец и `sid` сессии запроса.
-        close_others (CloseOtherSessions): Use case закрытия всех сессий, кроме текущей.
+        close (CloseSession): Use case закрытия сессий.
     """
-    await close_others(current.user_id, current.sid)
+    await close.others(current.user_id, current.sid)

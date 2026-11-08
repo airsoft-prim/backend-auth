@@ -1,5 +1,6 @@
 """Тесты сервиса отзыва токенов."""
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -12,11 +13,10 @@ from src.adapters.cache.repositories import (
 from src.application import (
     EnsureTokenActive,
     RevokeSession,
-    RevokeToken,
     RotateRefreshToken,
-    SlideSession,
 )
 from src.domain.entities import Session
+from src.domain.enums import TokenType
 from src.domain.errors import TokenRevokedError
 from src.domain.tokens import AccessTokenClaims, RefreshTokenClaims
 from tests.doubles import InMemoryRedis
@@ -56,58 +56,6 @@ def _expires_in(seconds: int) -> int:
         int: Момент истечения в секундах Unix epoch.
     """
     return int(datetime.now(UTC).timestamp()) + seconds
-
-
-async def test_revoke_stores_token_until_it_expires(
-    blacklisted_tokens_repository: RedisRevokedTokensRepository,
-    redis_double: InMemoryRedis,
-) -> None:
-    """Отзыв действующего токена.
-
-    Given: сервис отзыва и действующий `access`-токен, When: токен отзывается при выходе, Then: в
-    `Redis` появляется запись по `jti` с TTL, не превышающим срок жизни токена.
-
-    Args:
-        blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий маркеров отзыва
-            токенов поверх подмены `Redis`.
-        redis_double (InMemoryRedis): Подмена `Redis` с хранилищем значений и TTL в памяти.
-    """
-    # Дано
-    revoke_token = RevokeToken(blacklisted_tokens_repository)
-    claims = _claims(expires_at=_expires_in(TTL_SECONDS))
-
-    # Когда
-    await revoke_token(claims)
-
-    # Тогда
-    key = f"token:access:revoked:{TOKEN_ID}"
-    assert redis_double.values[key] == "1"
-    assert 0 < redis_double.ttl[key] <= TTL_SECONDS
-
-
-async def test_revoke_does_not_store_expired_token(
-    blacklisted_tokens_repository: RedisRevokedTokensRepository,
-    redis_double: InMemoryRedis,
-) -> None:
-    """Отзыв уже истёкшего токена.
-
-    Given: срок действия токена уже истёк, When: сервис пытается отозвать токен, Then: запись не
-    создаётся: проверять отзыв истёкшего токена бессмысленно.
-
-    Args:
-        blacklisted_tokens_repository (RedisRevokedTokensRepository): Репозиторий маркеров отзыва
-            токенов поверх подмены `Redis`.
-        redis_double (InMemoryRedis): Подмена `Redis` с хранилищем значений и TTL в памяти.
-    """
-    # Дано
-    revoke_token = RevokeToken(blacklisted_tokens_repository)
-    claims = _claims(expires_at=_expires_in(-TTL_SECONDS))
-
-    # Когда
-    await revoke_token(claims)
-
-    # Тогда
-    assert redis_double.values == {}
 
 
 async def test_ensure_active_accepts_token_that_is_not_revoked(
@@ -151,12 +99,11 @@ async def test_ensure_active_rejects_revoked_token(
             сессий поверх подмены `Redis`.
     """
     # Дано
-    revoke_token = RevokeToken(blacklisted_tokens_repository)
     ensure_token_active = EnsureTokenActive(
         blacklisted_tokens_repository, revoked_sessions_repository
     )
     claims = _claims(expires_at=_expires_in(TTL_SECONDS))
-    await revoke_token(claims)
+    await blacklisted_tokens_repository.store(TokenType.ACCESS, TOKEN_ID, TTL_SECONDS)
 
     # Когда / Тогда
     with pytest.raises(TokenRevokedError, match="Token is revoked"):
@@ -279,11 +226,11 @@ async def test_rotate_revokes_session_on_refresh_token_reuse(
         )
     )
     rotate = RotateRefreshToken(
-        SlideSession(session_repository, TTL_SECONDS),
-        RevokeToken(blacklisted_tokens_repository),
+        session_repository,
         RevokeSession(revoked_sessions_repository, session_repository),
         blacklisted_tokens_repository,
         revoked_sessions_repository,
+        TTL_SECONDS,
     )
     expires_at = _expires_in(TTL_SECONDS)
     claims = RefreshTokenClaims(
@@ -305,6 +252,102 @@ async def test_rotate_revokes_session_on_refresh_token_reuse(
     assert redis_double.values[key] == "1"
     assert 0 < redis_double.ttl[key] <= TTL_SECONDS
 
+    stored = await session_repository.get(SID)
+    assert stored is not None
+    assert stored.revoked_at is not None
+
+
+async def test_concurrent_refresh_consumes_token_once(
+    blacklisted_tokens_repository: RedisRevokedTokensRepository,
+    revoked_sessions_repository: RedisRevokedSessionsRepository,
+    session_repository: RedisSessionRepository,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Два параллельных запроса не могут использовать один refresh-токен дважды."""
+    now = datetime.now(UTC)
+    await session_repository.save(
+        Session(id=SID, user_id=42, created_at=now, expires_at=now + timedelta(seconds=TTL_SECONDS))
+    )
+    rotate = RotateRefreshToken(
+        session_repository,
+        RevokeSession(revoked_sessions_repository, session_repository),
+        blacklisted_tokens_repository,
+        revoked_sessions_repository,
+        TTL_SECONDS,
+    )
+    expires_at = _expires_in(TTL_SECONDS)
+    claims = RefreshTokenClaims(
+        iss="Auth Server",
+        sub="42",
+        aud="Auth Server",
+        iat=expires_at - TTL_SECONDS,
+        exp=expires_at,
+        jti=TOKEN_ID,
+        sid=SID,
+    )
+
+    both_checked = asyncio.Event()
+    checked = 0
+    request_count = 2
+    original_check = revoked_sessions_repository.check
+
+    async def synchronized_check(sid: str) -> bool:
+        nonlocal checked
+        result = await original_check(sid)
+        checked += 1
+        if checked == request_count:
+            both_checked.set()
+        await both_checked.wait()
+        return result
+
+    monkeypatch.setattr(revoked_sessions_repository, "check", synchronized_check)
+
+    results = await asyncio.gather(rotate(claims), rotate(claims), return_exceptions=True)
+
+    assert sum(result is None for result in results) == 1
+    assert sum(isinstance(result, TokenRevokedError) for result in results) == 1
+    assert await revoked_sessions_repository.check(SID)
+
+
+async def test_rotation_rejects_missing_or_revoked_session(
+    session_repository: RedisSessionRepository,
+    blacklisted_tokens_repository: RedisRevokedTokensRepository,
+    revoked_sessions_repository: RedisRevokedSessionsRepository,
+) -> None:
+    """Продление не создаёт заново закрытую или исчезнувшую сессию."""
+    rotate = RotateRefreshToken(
+        session_repository,
+        RevokeSession(revoked_sessions_repository, session_repository),
+        blacklisted_tokens_repository,
+        revoked_sessions_repository,
+        TTL_SECONDS,
+    )
+    expires_at = _expires_in(TTL_SECONDS)
+    claims = RefreshTokenClaims(
+        iss="Auth Server",
+        sub="42",
+        aud="Auth Server",
+        iat=expires_at - TTL_SECONDS,
+        exp=expires_at,
+        jti=TOKEN_ID,
+        sid=SID,
+    )
+    with pytest.raises(TokenRevokedError):
+        await rotate(claims)
+
+    now = datetime.now(UTC)
+    await session_repository.save(
+        Session(
+            id=SID,
+            user_id=42,
+            created_at=now,
+            expires_at=now + timedelta(seconds=TTL_SECONDS),
+            revoked_at=now,
+        )
+    )
+    claims["jti"] = "another-token"
+    with pytest.raises(TokenRevokedError):
+        await rotate(claims)
     stored = await session_repository.get(SID)
     assert stored is not None
     assert stored.revoked_at is not None

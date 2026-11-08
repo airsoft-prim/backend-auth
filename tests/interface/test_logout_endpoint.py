@@ -1,5 +1,7 @@
 """Тесты HTTP-контракта выхода из системы."""
 
+from datetime import UTC, datetime, timedelta
+
 from fastapi import FastAPI, status
 import pytest
 
@@ -11,10 +13,13 @@ from src.adapters.cache.repositories import (
 from src.adapters.filesystem.repositories import FilePrivateJwkRepository
 from src.application import EnsureTokenActive, RevokeSession, SignToken, VerifyToken
 from src.application.jwk import RotateJwk
+from src.application.session import RequireActiveSession
 from src.config import config
+from src.domain.entities import Session
 from src.domain.tokens import RefreshTokenClaims, RefreshTokenConfig
 from src.interface.auth.deps import (
     get_ensure_token_active,
+    get_require_active_session,
     get_revoke_session,
     get_verify_refresh_token,
 )
@@ -28,7 +33,7 @@ TTL_SECONDS = 3600
 
 
 @pytest.fixture
-def logout_client(
+async def logout_client(
     api_app: FastAPI,
     verify_refresh_token: VerifyToken[RefreshTokenClaims],
     blacklisted_tokens_repository: RedisRevokedTokensRepository,
@@ -51,6 +56,13 @@ def logout_client(
         ASGIClient: Клиент маршрута выхода.
     """
     api_app.dependency_overrides[get_verify_refresh_token] = lambda: verify_refresh_token
+    api_app.dependency_overrides[get_require_active_session] = lambda: RequireActiveSession(
+        session_repository
+    )
+    now = datetime.now(UTC)
+    await session_repository.save(
+        Session(id=SID, user_id=SUBJECT, created_at=now, expires_at=now + timedelta(hours=1))
+    )
     api_app.dependency_overrides[get_ensure_token_active] = lambda: EnsureTokenActive(
         blacklisted_tokens_repository, revoked_sessions_repository
     )

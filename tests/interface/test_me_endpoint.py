@@ -1,6 +1,6 @@
 """Тесты HTTP-контракта профиля владельца токена."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import FastAPI, status
 import jwt
@@ -9,16 +9,19 @@ import pytest
 from src.adapters.cache.repositories import (
     RedisRevokedSessionsRepository,
     RedisRevokedTokensRepository,
+    RedisSessionRepository,
 )
 from src.application import EnsureTokenActive, SignToken, VerifyToken
 from src.application.auth import GetUser
 from src.application.jwk import RotateJwk
-from src.domain.entities import User
+from src.application.session import RequireActiveSession
+from src.domain.entities import Session, User
 from src.domain.enums import TokenType, UserRole
 from src.interface.auth.deps import (
     get_ensure_token_active,
+    get_require_active_session,
     get_user,
-    get_verify_access_token,
+    get_verify_refresh_token,
 )
 from tests.asgi_client import ASGIClient
 from tests.doubles import InMemoryUserRepository, as_user_repository
@@ -45,10 +48,11 @@ def user_repository() -> InMemoryUserRepository:
 
 
 @pytest.fixture
-def me_client(
+async def me_client(  # noqa: PLR0913, PLR0917
     api_app: FastAPI,
     user_repository: InMemoryUserRepository,
-    verify_token: VerifyToken,
+    verify_refresh_token: VerifyToken,
+    session_repository: RedisSessionRepository,
     blacklisted_tokens_repository: RedisRevokedTokensRepository,
     revoked_sessions_repository: RedisRevokedSessionsRepository,
 ) -> ASGIClient:
@@ -68,7 +72,14 @@ def me_client(
         ASGIClient: Клиент маршрута профиля.
     """
     api_app.dependency_overrides[get_user] = lambda: GetUser(as_user_repository(user_repository))
-    api_app.dependency_overrides[get_verify_access_token] = lambda: verify_token
+    now = datetime.now(UTC)
+    await session_repository.save(
+        Session(id=SID, user_id=USER_ID, created_at=now, expires_at=now + timedelta(hours=1))
+    )
+    api_app.dependency_overrides[get_require_active_session] = lambda: RequireActiveSession(
+        session_repository
+    )
+    api_app.dependency_overrides[get_verify_refresh_token] = lambda: verify_refresh_token
     api_app.dependency_overrides[get_ensure_token_active] = lambda: EnsureTokenActive(
         blacklisted_tokens_repository, revoked_sessions_repository
     )
@@ -106,7 +117,7 @@ def _stored_account(
 
 async def _issue_token(
     rotate_jwk: RotateJwk,
-    sign_token: SignToken,
+    sign_refresh_token: SignToken,
     *,
     subject: int | str = USER_ID,
 ) -> str:
@@ -121,7 +132,7 @@ async def _issue_token(
         str: Подписанный `access`-токен.
     """
     await rotate_jwk(TTL_SECONDS)
-    token, _ = await sign_token(subject, SID, not_required={"srl": SUBJECT_ROLE})
+    token, _ = await sign_refresh_token(subject, SID)
 
     return token
 
@@ -135,7 +146,7 @@ def _authorization(token: str) -> dict[str, str]:
     Returns:
         dict[str, str]: Заголовок `Authorization`.
     """
-    return {"Authorization": f"Bearer {token}"}
+    return {"cookie": f"refresh_token={token}"}
 
 
 def _token_jti(token: str) -> str:
@@ -154,7 +165,7 @@ async def test_me_returns_owner_profile(
     me_client: ASGIClient,
     user_repository: InMemoryUserRepository,
     rotate_jwk: RotateJwk,
-    sign_token: SignToken,
+    sign_refresh_token: SignToken,
 ) -> None:
     """Профиль владельца действующего токена.
 
@@ -169,7 +180,7 @@ async def test_me_returns_owner_profile(
     """
     # Дано
     user_repository.users.append(_stored_account())
-    token = await _issue_token(rotate_jwk, sign_token)
+    token = await _issue_token(rotate_jwk, sign_refresh_token)
 
     # Когда
     response = await me_client.get(ME_PATH, headers=_authorization(token))
@@ -193,7 +204,7 @@ async def test_me_returns_profile_of_blocked_user(
     me_client: ASGIClient,
     user_repository: InMemoryUserRepository,
     rotate_jwk: RotateJwk,
-    sign_token: SignToken,
+    sign_refresh_token: SignToken,
 ) -> None:
     """Профиль заблокированного владельца токена.
 
@@ -208,7 +219,7 @@ async def test_me_returns_profile_of_blocked_user(
     """
     # Дано
     user_repository.users.append(_stored_account(disabled=True))
-    token = await _issue_token(rotate_jwk, sign_token)
+    token = await _issue_token(rotate_jwk, sign_refresh_token)
 
     # Когда
     response = await me_client.get(ME_PATH, headers=_authorization(token))
@@ -261,7 +272,7 @@ async def test_me_rejects_revoked_token(
     me_client: ASGIClient,
     user_repository: InMemoryUserRepository,
     rotate_jwk: RotateJwk,
-    sign_token: SignToken,
+    sign_refresh_token: SignToken,
     blacklisted_tokens_repository: RedisRevokedTokensRepository,
 ) -> None:
     """Профиль с отозванным токеном.
@@ -279,9 +290,9 @@ async def test_me_rejects_revoked_token(
     """
     # Дано
     user_repository.users.append(_stored_account())
-    token = await _issue_token(rotate_jwk, sign_token)
+    token = await _issue_token(rotate_jwk, sign_refresh_token)
     await blacklisted_tokens_repository.store(
-        token_type=TokenType.ACCESS,
+        token_type=TokenType.REFRESH,
         token_id=_token_jti(token),
         ttl=TTL_SECONDS,
     )
@@ -296,7 +307,7 @@ async def test_me_rejects_revoked_token(
 async def test_me_rejects_unknown_user(
     me_client: ASGIClient,
     rotate_jwk: RotateJwk,
-    sign_token: SignToken,
+    sign_refresh_token: SignToken,
 ) -> None:
     """Профиль токена, чья учётная запись не найдена.
 
@@ -309,7 +320,7 @@ async def test_me_rejects_unknown_user(
         sign_token (SignToken): Сценарий подписи `access`-токена ключом тестового хранилища.
     """
     # Дано
-    token = await _issue_token(rotate_jwk, sign_token)
+    token = await _issue_token(rotate_jwk, sign_refresh_token)
 
     # Когда
     response = await me_client.get(ME_PATH, headers=_authorization(token))
@@ -322,7 +333,7 @@ async def test_me_rejects_unknown_user(
 async def test_me_rejects_non_numeric_subject(
     me_client: ASGIClient,
     rotate_jwk: RotateJwk,
-    sign_token: SignToken,
+    sign_refresh_token: SignToken,
 ) -> None:
     """Профиль токена с нечисловым субъектом.
 
@@ -335,10 +346,55 @@ async def test_me_rejects_non_numeric_subject(
         sign_token (SignToken): Сценарий подписи `access`-токена ключом тестового хранилища.
     """
     # Дано
-    token = await _issue_token(rotate_jwk, sign_token, subject="not-a-number")
+    token = await _issue_token(rotate_jwk, sign_refresh_token, subject="not-a-number")
 
     # Когда
     response = await me_client.get(ME_PATH, headers=_authorization(token))
 
     # Тогда
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+async def test_me_rejects_access_token(
+    me_client: ASGIClient, rotate_jwk: RotateJwk, sign_token: SignToken
+) -> None:
+    """Access-токен не даёт доступ к профилю auth."""
+    await rotate_jwk(TTL_SECONDS)
+    token, _ = await sign_token(USER_ID, SID, not_required={"srl": SUBJECT_ROLE})
+    response = await me_client.get(ME_PATH, headers=_authorization(token))
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.parametrize("state", ["missing", "revoked", "expired", "other_owner"])
+async def test_me_rejects_inactive_session(  # noqa: PLR0913, PLR0917
+    state: str,
+    me_client: ASGIClient,
+    session_repository: RedisSessionRepository,
+    rotate_jwk: RotateJwk,
+    sign_refresh_token: SignToken,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Подписанного refresh недостаточно без активной сессии владельца."""
+    now = datetime.now(UTC)
+    sid = "missing" if state == "missing" else SID
+    if state != "missing":
+        session = Session(
+            id=SID,
+            user_id=USER_ID + (state == "other_owner"),
+            created_at=now,
+            expires_at=now + timedelta(hours=1),
+            revoked_at=now if state == "revoked" else None,
+        )
+        if state == "expired":
+            session.expires_at = now - timedelta(seconds=1)
+
+            async def expired_session(_sid: str) -> Session:
+                return session
+
+            monkeypatch.setattr(session_repository, "get", expired_session)
+        else:
+            await session_repository.save(session)
+    await rotate_jwk(TTL_SECONDS)
+    token, _ = await sign_refresh_token(USER_ID, sid)
+    response = await me_client.get(ME_PATH, headers=_authorization(token))
     assert response.status_code == status.HTTP_403_FORBIDDEN

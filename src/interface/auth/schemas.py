@@ -56,8 +56,7 @@ class RegisterRequestBody(BaseModel):
 class LoginRequestBody(BaseModel):
     """Тело запроса на вход в систему.
 
-    Проверяет формат логина и принимает пароль как `SecretStr`. Соответствие пароля сохранённому
-    хешу проверяется в `LoginUser`.
+    Проверяет формат логина и принимает пароль как `SecretStr`.
     """
 
     username: Username = Field(description="Логин учётной записи.", examples=["Oidaho"])

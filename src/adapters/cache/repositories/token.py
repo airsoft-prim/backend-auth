@@ -16,6 +16,22 @@ class RedisRevokedTokensRepository(RedisRepository):
 
     _key_template = Template("token:$type:revoked:$jti")
 
+    async def consume(self, token_type: TokenType, token_id: str, ttl: int) -> bool:
+        """Атомарно сохраняет маркер, если он ещё отсутствует.
+
+        Args:
+            token_type (TokenType): Тип токена.
+            token_id (str): Идентификатор токена из `jti`.
+            ttl (int): Время жизни маркера в секундах.
+
+        Returns:
+            bool: `True`, если маркер создан; `False`, если он уже существует.
+        """
+        key = self.compile_template({"type": token_type.value, "jti": token_id})
+
+        with self._as_repository_error("Revoked token saving error."):
+            return bool(await self.client.set(key, "1", ex=ttl, nx=True))
+
     async def store(self, token_type: TokenType, token_id: str, ttl: int) -> None:
         """Помечает токен отозванным до истечения его срока действия.
 

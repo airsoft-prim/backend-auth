@@ -1,6 +1,6 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Final
 
 from cryptography.hazmat.primitives import serialization
@@ -9,7 +9,6 @@ import jwt
 from jwt import PyJWK
 
 from src.application.security import SIGNING_ALGORITHM, key_to_jwk
-from src.application.session import SlideSession
 from src.domain.enums import TokenType
 from src.domain.errors import (
     JWTDecryptionError,
@@ -276,37 +275,6 @@ class EnsureTokenActive(AbstractUseCase):
             raise TokenRevokedError(msg) from None
 
 
-class RevokeToken(AbstractUseCase):
-    """Use case отзыва выданного токена.
-
-    Сохраняет маркер отзыва типа токена и `jti` на остаток срока действия `exp`. Для истёкшего
-    токена запись не создаётся.
-    """
-
-    def __init__(self, tokens: RevokedTokensRepository) -> None:
-        """Инициализация класса.
-
-        Args:
-            tokens (RevokedTokensRepository): Порт доступа к отозванным токенам.
-        """
-        self._tokens = tokens
-
-    async def __call__(self, claims: TokenClaims, token_type: TokenType = TokenType.ACCESS) -> None:
-        """Помечает токен отозванным до истечения его срока действия.
-
-        Запись в `Redis` получает TTL, равный остатку срока жизни токена. Если токен уже истёк,
-        запись не создаётся: проверять его отзыв больше не нужно.
-
-        Args:
-            claims (TokenClaims): Проверенные `claims` токена.
-            token_type (TokenType): Тип токена.
-        """
-        if (ttl := claims["exp"] - int(datetime.now(UTC).timestamp())) <= 0:
-            return
-
-        await self._tokens.store(token_type, claims["jti"], ttl)
-
-
 class RotateRefreshToken(AbstractUseCase):
     """Use case ротации `refresh`-токена с обнаружением повторного использования.
 
@@ -316,26 +284,26 @@ class RotateRefreshToken(AbstractUseCase):
 
     def __init__(
         self,
-        slide_session: SlideSession,
-        revoke_token: RevokeToken,
+        session_repository: SessionRepository,
         revoke_session: RevokeSession,
         tokens: RevokedTokensRepository,
         sessions: RevokedSessionsRepository,
+        ttl: int,
     ) -> None:
         """Инициализация класса.
 
         Args:
-            slide_session (SlideSession): Use case продления сессии (sliding expiration).
-            revoke_token (RevokeToken): Use case отзыва отдельного токена.
+            session_repository (SessionRepository): Порт доступа к сессиям.
             revoke_session (RevokeSession): Use case отзыва всей сессии при краже.
             tokens (RevokedTokensRepository): Порт доступа к отозванным токенам.
             sessions (RevokedSessionsRepository): Порт доступа к отозванным сессиям.
+            ttl (int): Срок продлённой сессии в секундах.
         """
-        self._slide_session = slide_session
-        self._revoke_token = revoke_token
+        self._session_repository = session_repository
         self._revoke_session = revoke_session
         self._tokens = tokens
         self._sessions = sessions
+        self._ttl = ttl
 
     async def __call__(self, claims: RefreshTokenClaims) -> None:
         """Продлевает сессию и отзывает старый `refresh`-токен.
@@ -353,13 +321,20 @@ class RotateRefreshToken(AbstractUseCase):
             msg = "Token is revoked."
             raise TokenRevokedError(msg) from None
 
-        if await self._tokens.check(TokenType.REFRESH, claims["jti"]):
+        ttl = claims["exp"] - int(datetime.now(UTC).timestamp())
+        if ttl <= 0:
+            msg = "Token is expired."
+            raise TokenRevokedError(msg) from None
+
+        if not await self._tokens.consume(TokenType.REFRESH, claims["jti"], ttl):
             await self._revoke_session(claims)
             msg = "Token is revoked."
             raise TokenRevokedError(msg) from None
 
-        await self._slide_session(claims["sid"])
-        await self._revoke_token(claims, TokenType.REFRESH)
+        expires_at = datetime.now(UTC) + timedelta(seconds=self._ttl)
+        if not await self._session_repository.slide(claims["sid"], expires_at):
+            msg = "Session is not active."
+            raise TokenRevokedError(msg) from None
 
 
 class RevokeSession(AbstractUseCase):
@@ -449,7 +424,7 @@ class Authorize[ClaimsT: TokenClaims](AbstractUseCase):
         """
         if token is None:
             msg = "Bearer token is missing."
-            raise UserAuthorizationError(msg)
+            raise UserAuthorizationError(msg) from None
 
         claims = await self._verify(token)
         await self._ensure_active(claims, self._token_type)

@@ -6,21 +6,18 @@
 """
 
 from ._base import AbstractUseCase
-from .auth import GetUser, LoginUser, RegisterUser
+from .auth import GetUser, RegisterUser
 from .jwk import CollectJwks, RotateJwk
 from .session import (
-    CloseOtherSessions,
     CloseSession,
     CreateSession,
     ListSessions,
-    SlideSession,
 )
 from .token import (
     Authorize,
     EnsureTokenActive,
     IssueTokenPair,
     RevokeSession,
-    RevokeToken,
     RotateRefreshToken,
     SignToken,
     VerifyToken,
@@ -29,7 +26,6 @@ from .token import (
 __all__ = [
     "AbstractUseCase",
     "Authorize",
-    "CloseOtherSessions",
     "CloseSession",
     "CollectJwks",
     "CreateSession",
@@ -37,13 +33,10 @@ __all__ = [
     "GetUser",
     "IssueTokenPair",
     "ListSessions",
-    "LoginUser",
     "RegisterUser",
     "RevokeSession",
-    "RevokeToken",
     "RotateJwk",
     "RotateRefreshToken",
     "SignToken",
-    "SlideSession",
     "VerifyToken",
 ]

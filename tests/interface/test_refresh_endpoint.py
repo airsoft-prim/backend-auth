@@ -1,5 +1,7 @@
 """Тесты HTTP-контракта обновления `access`-токена."""
 
+from datetime import UTC, datetime, timedelta
+
 from fastapi import FastAPI, status
 import jwt
 import pytest
@@ -11,19 +13,19 @@ from src.adapters.cache.repositories import (
 )
 from src.application import (
     RevokeSession,
-    RevokeToken,
     RotateRefreshToken,
     SignToken,
-    SlideSession,
     VerifyToken,
 )
 from src.application.auth import GetUser
 from src.application.jwk import RotateJwk
+from src.application.session import RequireActiveSession
 from src.config import config
-from src.domain.entities import User
+from src.domain.entities import Session, User
 from src.domain.enums import UserRole
 from src.domain.tokens import RefreshTokenClaims
 from src.interface.auth.deps import (
+    get_require_active_session,
     get_rotate_refresh_token,
     get_sign_access_token,
     get_sign_refresh_token,
@@ -58,7 +60,7 @@ def user_repository() -> InMemoryUserRepository:
 
 
 @pytest.fixture
-def refresh_client(  # noqa: PLR0913, PLR0917
+async def refresh_client(  # noqa: PLR0913, PLR0917
     api_app: FastAPI,
     verify_refresh_token: VerifyToken[RefreshTokenClaims],
     sign_token: SignToken,
@@ -87,14 +89,21 @@ def refresh_client(  # noqa: PLR0913, PLR0917
         ASGIClient: Клиент маршрута обновления.
     """
     api_app.dependency_overrides[get_verify_refresh_token] = lambda: verify_refresh_token
+    api_app.dependency_overrides[get_require_active_session] = lambda: RequireActiveSession(
+        session_repository
+    )
+    now = datetime.now(UTC)
+    await session_repository.save(
+        Session(id=SID, user_id=USER_ID, created_at=now, expires_at=now + timedelta(hours=1))
+    )
     api_app.dependency_overrides[get_sign_access_token] = lambda: sign_token
     api_app.dependency_overrides[get_sign_refresh_token] = lambda: sign_refresh_token
     api_app.dependency_overrides[get_rotate_refresh_token] = lambda: RotateRefreshToken(
-        SlideSession(session_repository, config.security.REFRESH_TOKEN_TTL),
-        RevokeToken(blacklisted_tokens_repository),
+        session_repository,
         RevokeSession(revoked_sessions_repository, session_repository),
         blacklisted_tokens_repository,
         revoked_sessions_repository,
+        config.security.REFRESH_TOKEN_TTL,
     )
     api_app.dependency_overrides[get_user] = lambda: GetUser(as_user_repository(user_repository))
 

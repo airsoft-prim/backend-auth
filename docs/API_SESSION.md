@@ -30,7 +30,8 @@
 
 Все маршруты слоя ДОЛЖНЫ принимать refresh-токен из cookie: управление сессиями зависит от текущей
 сессии, а не от access-токена. Отсутствие cookie даёт 401, недействительный, просроченный или
-отозванный refresh-токен — 403.
+отозванный refresh-токен — 403. Сессия должна существовать, принадлежать владельцу
+токена, не быть отозванной и не истечь.
 
 ## 3. Схемы данных
 
@@ -79,8 +80,9 @@ curl http://localhost:8000/sessions \
 
 - Аутентификация: refresh-токен из cookie.
 - Ответ 204: тело отсутствует.
-- Отзывает сессию `sid` владельца: все её токены (refresh и ранее выданные access) становятся
-  недействительными до конца срока действия. Сессия другого владельца или несуществующая даёт 404.
+- Отзывает сессию `sid` владельца: её refresh-токен перестаёт предоставлять доступ к auth.
+  Сервисы, проверяющие access-токен автономно через JWKS, не узнают об отзыве и принимают
+  ранее выданный access-токен до истечения его срока. Сессия другого владельца или несуществующая даёт 404.
 
 | Код | Когда                                          | Тело        |
 | --- | ---------------------------------------------- | ----------- |
@@ -115,13 +117,13 @@ curl -X DELETE http://localhost:8000/sessions \
 
 ## 5. Как контракт описан в коде
 
-| Файл                               | Что содержит                                                                          |
-| ---------------------------------- | ------------------------------------------------------------------------------------- |
-| `src/interface/session/routes.py`  | Маршруты `APIRouter(prefix="/sessions")`                                              |
-| `src/interface/session/deps.py`    | `CurrentSession` из refresh-токена; сборка use case                                   |
-| `src/interface/session/schemas.py` | `SessionData`, `SessionsList`                                                         |
-| `src/interface/session/docs.py`    | Описания для OpenAPI (`RouteDocs`)                                                    |
-| `src/application/session.py`       | `CreateSession`, `SlideSession`, `ListSessions`, `CloseSession`, `CloseOtherSessions` |
+| Файл                               | Что содержит                                        |
+| ---------------------------------- | --------------------------------------------------- |
+| `src/interface/session/routes.py`  | Маршруты `APIRouter(prefix="/sessions")`            |
+| `src/interface/session/deps.py`    | `CurrentSession` из refresh-токена; сборка use case |
+| `src/interface/session/schemas.py` | `SessionData`, `SessionsList`                       |
+| `src/interface/session/docs.py`    | Описания для OpenAPI (`RouteDocs`)                  |
+| `src/application/session.py`       | `CreateSession`, `ListSessions`, `CloseSession`     |
 
 `get_current_session` берёт владельца и `sid` из проверенного refresh-токена (cookie), а не из
 access-токена: управление сессиями привязано к текущей сессии.

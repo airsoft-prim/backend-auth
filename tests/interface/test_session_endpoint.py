@@ -11,7 +11,6 @@ from src.adapters.cache.repositories import (
     RedisSessionRepository,
 )
 from src.application import (
-    CloseOtherSessions,
     CloseSession,
     EnsureTokenActive,
     ListSessions,
@@ -19,11 +18,15 @@ from src.application import (
     VerifyToken,
 )
 from src.application.jwk import RotateJwk
+from src.application.session import RequireActiveSession
 from src.domain.entities import Session
 from src.domain.tokens import RefreshTokenClaims
-from src.interface.auth.deps import get_ensure_token_active, get_verify_refresh_token
+from src.interface.auth.deps import (
+    get_ensure_token_active,
+    get_require_active_session,
+    get_verify_refresh_token,
+)
 from src.interface.sessions.deps import (
-    get_close_other_sessions,
     get_close_session,
     get_list_sessions,
 )
@@ -62,6 +65,9 @@ def session_client(
         ASGIClient: Клиент маршрутов `/sessions`.
     """
     api_app.dependency_overrides[get_verify_refresh_token] = lambda: verify_refresh_token
+    api_app.dependency_overrides[get_require_active_session] = lambda: RequireActiveSession(
+        session_repository
+    )
     api_app.dependency_overrides[get_ensure_token_active] = lambda: EnsureTokenActive(
         blacklisted_tokens_repository, revoked_sessions_repository
     )
@@ -69,9 +75,6 @@ def session_client(
 
     close_session = CloseSession(revoked_sessions_repository, session_repository)
     api_app.dependency_overrides[get_close_session] = lambda: close_session
-    api_app.dependency_overrides[get_close_other_sessions] = lambda: CloseOtherSessions(
-        session_repository, close_session
-    )
 
     return ASGIClient(api_app)
 
@@ -168,8 +171,12 @@ async def test_list_sessions_returns_active_sessions(
     # Тогда
     assert response.status_code == status.HTTP_200_OK
 
-    sessions = response.payload["sessions"]
+    sessions = response.payload
     assert len(sessions) == SEEDED_SESSIONS
+    assert all(
+        set(item) == {"id", "current", "created_at", "expires_at", "ip", "platform", "browser"}
+        for item in sessions
+    )
 
     by_id = {item["id"]: item for item in sessions}
     assert by_id[CURRENT_SID]["current"] is True
@@ -260,6 +267,7 @@ async def test_close_session_revokes_selected_session(
 
 async def test_close_session_rejects_unknown_session(
     session_client: ASGIClient,
+    session_repository: RedisSessionRepository,
     rotate_jwk: RotateJwk,
     sign_refresh_token: SignToken,
 ) -> None:
@@ -275,6 +283,7 @@ async def test_close_session_rejects_unknown_session(
             хранилища.
     """
     # Дано
+    await _seed_sessions(session_repository)
     token = await _issue_refresh_token(rotate_jwk, sign_refresh_token)
 
     # Когда
