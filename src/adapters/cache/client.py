@@ -24,6 +24,8 @@ def _get_pool(db: int) -> ConnectionPool:
         ConnectionPool: Пул соединений, который выбирает эту БД при подключении.
     """
     if db not in _pools:
+        credentials = config.cache.credentials or {}
+
         _pools[db] = ConnectionPool(
             host=config.cache.HOST,
             port=config.cache.PORT,
@@ -32,6 +34,7 @@ def _get_pool(db: int) -> ConnectionPool:
             decode_responses=True,
             retry_on_timeout=False,
             socket_connect_timeout=1,
+            **credentials,
         )
 
     return _pools[db]

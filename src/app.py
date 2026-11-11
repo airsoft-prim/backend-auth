@@ -33,6 +33,9 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
     get_rotation_daemon().start()
     logger.success("JWK Rotation Daemon started.")
 
+    if not config.cache.credentials:
+        logger.warning("Cache credentials are not set.")
+
     logger.success("Application started.")
     logger.info(f"Debug mode is {'OOFNF'[config.app.DEBUG :: 2]}.")
 
