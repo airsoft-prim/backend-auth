@@ -134,6 +134,8 @@ class OpenUserSession:
         """
         user = await self._users.get_by_username(username)
 
+        # TODO: Возможно, без проверки Argon2 можно определить существование логина по времени
+        # ответа; можно проверить фиктивный хеш, но хз, сомнительно.
         if user is None or user.disabled:
             msg = "User not found."
             raise UserIdentificationError(msg) from None
