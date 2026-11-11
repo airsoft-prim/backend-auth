@@ -16,7 +16,6 @@ from tests.doubles import InMemoryRedis
 USER_ID = 42
 OTHER_USER_ID = 43
 TTL_SECONDS = 3600
-SESSION_LIMIT = 2
 
 CHROME_WINDOWS = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -99,7 +98,7 @@ async def test_create_session_stores_login_context(
         session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены `Redis`.
     """
     # Дано
-    create_session = CreateSession(session_repository, TTL_SECONDS, max_active=5)
+    create_session = CreateSession(session_repository, TTL_SECONDS)
 
     # Когда
     session = await create_session(USER_ID, ip="203.0.113.7", user_agent=CHROME_WINDOWS)
@@ -118,31 +117,17 @@ async def test_create_session_stores_login_context(
     assert stored.browser == "Chrome"
 
 
-async def test_create_session_revokes_oldest_over_limit(
+async def test_creating_many_sessions_preserves_existing_sessions(
     session_repository: RedisSessionRepository,
 ) -> None:
-    """Создание сессии сверх лимита отзывает самую старую.
+    """Новые входы не закрывают сессии владельца, даже если их больше пяти."""
+    create_session = CreateSession(session_repository, TTL_SECONDS)
+    created = [await create_session(USER_ID) for _ in range(7)]
 
-    Given: лимит активных сессий равен двум, When: создаётся третья сессия, Then: самая старая
-    сессия отзывается, а новых остаётся две.
+    active = await session_repository.list_active(USER_ID)
 
-    Args:
-        session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены `Redis`.
-    """
-    # Дано
-    create_session = CreateSession(session_repository, TTL_SECONDS, max_active=SESSION_LIMIT)
-    oldest = await create_session(USER_ID)
-    await create_session(USER_ID)
-
-    # Когда
-    await create_session(USER_ID)
-
-    # Тогда
-    assert len(list(await session_repository.list_active(USER_ID))) == SESSION_LIMIT
-
-    revoked = await session_repository.get(oldest.id)
-    assert revoked is not None
-    assert revoked.revoked_at is not None
+    assert {session.id for session in active} == {session.id for session in created}
+    assert all(session.revoked_at is None for session in active)
 
 
 async def test_list_sessions_returns_active_sorted_newest_first(
@@ -197,7 +182,7 @@ async def test_close_session_revokes_owned_session(
         redis_double (InMemoryRedis): Подмена `Redis` с хранилищем значений и TTL в памяти.
     """
     # Дано
-    create_session = CreateSession(session_repository, TTL_SECONDS, max_active=5)
+    create_session = CreateSession(session_repository, TTL_SECONDS)
     session = await create_session(USER_ID)
 
     # Когда
@@ -228,7 +213,7 @@ async def test_close_session_is_idempotent(
         session_repository (RedisSessionRepository): Репозиторий сессий поверх подмены `Redis`.
     """
     # Дано
-    create_session = CreateSession(session_repository, TTL_SECONDS, max_active=5)
+    create_session = CreateSession(session_repository, TTL_SECONDS)
     session = await create_session(USER_ID)
     close_session = CloseSession(revoked_sessions_repository, session_repository)
     await close_session(USER_ID, session.id)

@@ -53,7 +53,6 @@ def login_client(
         CreateSession(
             session_repository,
             config.security.REFRESH_TOKEN_TTL,
-            config.security.MAX_ACTIVE_SESSIONS,
         ),
         sign_refresh_token,
     )

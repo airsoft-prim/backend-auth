@@ -189,12 +189,11 @@ async def get_create_session(
         client (Redis): Клиент `Redis` с сессиями пользователей.
 
     Returns:
-        CreateSession: Use case создания сессии с лимитом активных сессий.
+        CreateSession: Use case создания сессии пользователя.
     """
     return CreateSession(
         RedisSessionRepository(client),
         config.security.REFRESH_TOKEN_TTL,
-        config.security.MAX_ACTIVE_SESSIONS,
     )
 
 

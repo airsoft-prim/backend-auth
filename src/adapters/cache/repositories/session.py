@@ -43,7 +43,7 @@ class RedisSessionRepository(RedisRepository):
     """Репозиторий сессий пользователей в `Redis`.
 
     Сессия хранится в JSON по ключу `session:{sid}` с TTL до `expires_at`; сеты
-    `session:user:{user_id}` индексируют сессии по владельцу для лимита активных сессий.
+    `session:user:{user_id}` индексируют сессии по владельцу для получения их списка.
     """
 
     _key_template = Template("session:$sid")

@@ -63,7 +63,7 @@ def login_user(
     return OpenUserSession(
         as_user_repository(repository),
         password_hash,
-        CreateSession(session_repository, 3600, 5),
+        CreateSession(session_repository, 3600),
         cast("SignToken", signer),
     )
 

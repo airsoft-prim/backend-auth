@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class SecurityConfiguration(BaseSettings):
     """Секция конфигурации безопасности.
 
-    Читает настройки ключей, сроков жизни токенов, числа сессий и лимита запросов. Интервалы заданы
+    Читает настройки ключей, сроков жизни токенов и лимита запросов. Интервалы заданы
     в секундах; лимиты и сроки жизни положительны. `REQUEST_RATE_LIMIT` читается из
     `SUCURITY_REQUEST_RATE_LIMIT`, остальные поля — с префиксом `SECURITY_`.
     """
@@ -21,7 +21,6 @@ class SecurityConfiguration(BaseSettings):
 
     ACCESS_TOKEN_TTL: int = Field(default=int(timedelta(minutes=5).total_seconds()), gt=0)
     REFRESH_TOKEN_TTL: int = Field(default=int(timedelta(days=30).total_seconds()), gt=0)
-    MAX_ACTIVE_SESSIONS: int = Field(default=5, gt=0)
 
     REQUEST_RATE_LIMIT: int = Field(
         default=60, gt=0, validation_alias="SUCURITY_REQUEST_RATE_LIMIT"

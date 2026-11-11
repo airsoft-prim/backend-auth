@@ -56,9 +56,8 @@ class RequireActiveSession(AbstractUseCase):
 class CreateSession(AbstractUseCase):
     """Use case создания сессии пользователя.
 
-    При достижении лимита помечает самую старую активную сессию отозванной, затем сохраняет новую
-    сессию с `UUID` и сроком жизни `ttl`. Контекст входа дополняется платформой и браузером из
-    `User-Agent`.
+    Сохраняет новую сессию с `UUID` и сроком жизни `ttl`. Контекст входа дополняется платформой
+    и браузером из `User-Agent`.
     """
 
     # Признаки платформ в User-Agent. Порядок важен: iOS-агенты содержат и "like Mac OS X",
@@ -107,22 +106,20 @@ class CreateSession(AbstractUseCase):
 
         return platform, browser
 
-    def __init__(self, sessions: SessionRepository, ttl: int, max_active: int) -> None:
+    def __init__(self, sessions: SessionRepository, ttl: int) -> None:
         """Инициализация класса.
 
         Args:
             sessions (SessionRepository): Порт доступа к сессиям.
             ttl (int): Срок жизни сессии в секундах.
-            max_active (int): Максимальное число активных сессий на пользователя.
         """
         self._sessions = sessions
         self._ttl = ttl
-        self._max_active = max_active
 
     async def __call__(
         self, user_id: int, *, ip: str | None = None, user_agent: str | None = None
     ) -> Session:
-        """Создаёт сессию, не превышая лимит активных сессий.
+        """Создаёт сессию пользователя.
 
         Args:
             user_id (int): Идентификатор владельца сессии.
@@ -132,14 +129,6 @@ class CreateSession(AbstractUseCase):
         Returns:
             Session: Созданная сессия.
         """
-        active = list(await self._sessions.list_active(user_id))
-
-        if len(active) >= self._max_active:
-            oldest = min(active, key=lambda session: session.created_at)
-            oldest.revoked_at = datetime.now(UTC)
-
-            await self._sessions.save(oldest)
-
         now = datetime.now(UTC)
 
         platform, browser = None, None
